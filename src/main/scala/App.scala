@@ -1,11 +1,14 @@
 
 import github.{API=>gh}
 import github.PullMini
+import jenkins.{API=>japi}
 
 case class Config(ghuser: String,
                   ghrepo: String, 
                   jenkinsUrl: String,
-                  jenkinsJobs: Seq[String])
+                  jenkinsJobs: Seq[String]) {
+  def jenkins = japi(jenkinsUrl)
+}
 
 // TODO - Use futures for everything!                  
 
