@@ -5,32 +5,39 @@ import dispatch._
 import net.liftweb.json.{ DefaultFormats, Formats }
 import net.liftweb.json.JsonParser._
 
-class API(jenkinsUrl: String) {
+class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
+
+  protected def makeReq(uri: String) = {
+    val url = dispatch.url("%s/%s" format (jenkinsUrl, uri))
+    auth match {
+      case Some((user,pw)) => url.as_!(user, pw)
+      case _               => url
+    }
+  }
   
   def jobInfo(jobName: String): Job = {
-    val loc = url("%s/job/%s/api/json" format (jenkinsUrl,jobName))
+    val loc = makeReq("job/%s/api/json" format (jobName))
     Http(loc >- parseJsonTo[Job])
   }
   
   def buildJob(jobName: String, params: Map[String,String] = Map.empty): Unit = {
     val action = 
-      if (params.isEmpty)
-        url("%s/job/%s/build" format (jenkinsUrl, jobName))
+      if (params.isEmpty) makeReq("%s/build" format ( jobName))
       else {
-        val uri = "%s/job/%s/buildWithParameters" format (jenkinsUrl, jobName)
-        url(uri) <:< params
+        val uri = makeReq("job/%s/buildWithParameters" format (jobName))
+        uri <:< params
       }
     Http(action >|)
   }
   
   def buildStatus(jobName: String, buildNumber: String): BuildStatus = {
-    val loc = url("%s/job/%s/%s/api/json" format (jenkinsUrl,jobName, buildNumber))
+    val loc = makeReq("job/%s/%s/api/json" format (jobName, buildNumber))
     Http(loc >- parseJsonTo[BuildStatus])
   }
 }
 
 object API {
-  def apply(url: String) = new API(url)
+  def apply(url: String, auth: Option[(String,String)] = None) = new API(url, auth)
 }
 
 case class Job(name: String,

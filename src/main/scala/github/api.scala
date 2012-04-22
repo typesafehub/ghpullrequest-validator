@@ -10,8 +10,19 @@ object Authenticate {
  "scopes": [ 
    "user", 
    "repo" 
- ] 
+ ],
+ "note": "rest.github.Authenticate API Access"
 }"""
+
+  /** This method looks for a previous GH authorization for this API and retrieves it, or
+   * creates a new one.
+   */
+  def authenticate(user: String, pw: String): Authorization = {
+    val previousAuth: Option[Authorization] =
+      (getAuthentications(user,pw) filter (_.note == Some("rest.github.Authenticate API Access"))).headOption
+    previousAuth getOrElse makeAuthentication(user, pw)
+  }
+
  
   def makeAuthentication(user: String, pw: String): Authorization = 
     Http(authorizations.POST.as_!(user, pw) << authScopes >- parseJsonTo[Authorization])
@@ -73,11 +84,11 @@ object API {
     new { override val token = auth.token } with API {}
 
   def fromUser(user: String, pw: String): API = 
-    apply(Authenticate.makeAuthentication(user, pw))
+    apply(Authenticate.authenticate(user, pw))
 }
 
 case class AuthApp(name: String, url: String)
-case class Authorization(id: String, token: String, app: AuthApp)
+case class Authorization(id: String, token: String, app: AuthApp, note: Option[String])
 case class PullMini(state: String,
                     number: String,
                     title: String,
