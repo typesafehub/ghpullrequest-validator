@@ -1,16 +1,40 @@
+package rest
 package github
 
 import dispatch._
 
-import net.liftweb.json.{ DefaultFormats, Formats }
-import net.liftweb.json.JsonParser._
+object Authenticate {
+  private[this] val authorizations = :/("api.github.com").secure / "authorizations"
+
+  val authScopes = """{
+ "scopes": [ 
+   "user", 
+   "repo" 
+ ] 
+}"""
+ 
+  def makeAuthentication(user: String, pw: String): Authorization = 
+    Http(authorizations.POST.as_!(user, pw) << authScopes >- parseJsonTo[Authorization])
+
+  def getAuthentications(user: String, pw: String): List[Authorization] =
+    Http(authorizations.as_!(user, pw) >- parseJsonTo[List[Authorization]])
+
+  def deleteAuthentication(auth: Authorization, user: String, pw: String): Unit =
+    Http( (authorizations / auth.id).DELETE.as_!(user,pw) >|)
+
+  def deleteAuthentications(user: String, pw: String): Unit =
+     getAuthentications(user, pw) foreach { a => 
+       deleteAuthentication(a, user, pw) 
+     }
+}
 
 
-object API {
-  private implicit val formats = DefaultFormats // Brings in default date formats etc.
-  private def makeAPIurl(uri: String) = url("https://api.github.com" + uri)
-  private def parseJsonTo[T](response: String)(implicit formats: Formats, mf: Manifest[T]) = parse(response).extract[T]
-  
+trait API {
+  private def makeAPIurl(uri: String) = url("https://api.github.com" + uri) <:< Map("Authorization" -> "token %s".format(token))
+
+  val token: String
+
+
   /** Pulls in all the pull requests. */
   def pullrequests(user: String, repo: String): List[PullMini] = {
     val url = makeAPIurl("/repos/%s/%s/pulls" format (user,repo))
@@ -25,16 +49,35 @@ object API {
   }
   
   def pullrequestcomments(user: String, repo: String, number: String): List[Comment] = {
-    val url = makeAPIurl("/repos/%s/%s/pulls/%s/comments" format (user,repo,number))
-    val action = url >- parseJsonTo[List[Comment]]
+    val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user,repo,number))
+    val action = url >- { x => 
+       println(x)
+       parseJsonTo[List[Comment]](x)
+    }
+    Http(action)
+  }
+
+  def makepullrequestcomment(user: String, repo: String, number: String, comment: String): Comment = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user, repo, number))
+    val json = IssueComment(comment).toJson
+    println("json = " + json)
+    val action = (url.POST << json >- parseJsonTo[Comment])
+    println("action = " + action)
     Http(action)
   }
     
 }
 
+object API {
+  def apply(auth: Authorization): API = 
+    new { override val token = auth.token } with API {}
 
+  def fromUser(user: String, pw: String): API = 
+    apply(Authenticate.makeAuthentication(user, pw))
+}
 
-
+case class AuthApp(name: String, url: String)
+case class Authorization(id: String, token: String, app: AuthApp)
 case class PullMini(state: String,
                     number: String,
                     title: String,
@@ -101,3 +144,8 @@ case class Comment(
     user: User,
     created_at: String,
     updated_at: String)
+
+
+case class IssueComment(body: String) {
+  def toJson = """{ "body": "%s" }""".stripMargin format (body.replaceAll("\"", "\\\""))
+}

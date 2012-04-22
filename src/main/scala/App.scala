@@ -1,13 +1,15 @@
 
-import github.{API=>gh}
-import github.PullMini
-import jenkins.{API=>japi}
+import rest.github.{API=>gh}
+import rest.github.PullMini
+import rest.jenkins.{API=>japi}
 
 case class Config(ghuser: String,
+                  ghpw: String,
                   ghrepo: String, 
                   jenkinsUrl: String,
                   jenkinsJobs: Seq[String]) {
   def jenkins = japi(jenkinsUrl)
+  def github = gh.fromUser(ghuser, ghpw)
 }
 
 // TODO - Use futures for everything!                  
@@ -24,7 +26,7 @@ class ValidatePullRequests(config: Config) {
   
   def validatePullRequests(): Unit = {
     def validatePullRequest(info: PullMini): Unit = {
-      val pr = gh.pullrequest(config.ghuser,config.ghrepo,info.number)
+      val pr = config.github.pullrequest(config.ghuser,config.ghrepo,info.number)
       
       for {
         job <- config.jenkinsJobs 
@@ -33,7 +35,7 @@ class ValidatePullRequests(config: Config) {
       // TODO - Write message on pull request.      
       
     }
-    gh.pullrequests(config.ghuser,config.ghrepo) foreach validatePullRequest
+    config.github.pullrequests(config.ghuser,config.ghrepo) foreach validatePullRequest
   }
   
 }

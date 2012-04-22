@@ -1,3 +1,4 @@
+package rest
 package jenkins
 
 import dispatch._
@@ -5,8 +6,6 @@ import net.liftweb.json.{ DefaultFormats, Formats }
 import net.liftweb.json.JsonParser._
 
 class API(jenkinsUrl: String) {
-  private implicit val formats = DefaultFormats // Brings in default date formats etc.
-  private def parseJsonTo[T](response: String)(implicit formats: Formats, mf: Manifest[T]) = parse(response).extract[T]
   
   def jobInfo(jobName: String): Job = {
     val loc = url("%s/job/%s/api/json" format (jenkinsUrl,jobName))
