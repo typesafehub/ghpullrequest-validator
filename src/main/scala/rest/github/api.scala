@@ -127,6 +127,7 @@ case class Pull(
   body: String,
   state: String,
   updated_at: String,
+  created_at: String,
   mergeable: Boolean,
   base: Commit
 ) extends Ordered[Pull] {

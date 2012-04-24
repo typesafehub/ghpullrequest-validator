@@ -54,9 +54,9 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilder: ActorRef) extends Actor {
   private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[String]): Unit = {
     val checkedBuilds = for {
       comment <- ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
-      if comment.updated_at > pull.updated_at
       job <- jenkinsJobs
       if comment.body startsWith ("jenkins job " + job)
+      // TODO - Check to see if *content* of pull request changed since this comment.
     } yield job
 
     def makeCommenter(job: String): ActorRef =
