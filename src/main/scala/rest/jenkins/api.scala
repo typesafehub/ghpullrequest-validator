@@ -28,7 +28,7 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
       if (params.isEmpty) makeReq("%s/build" format ( jobName))
       else {
         val uri = makeReq("job/%s/buildWithParameters" format (jobName))
-        uri <:< params
+        uri.POST << params
       }
     Http(action >|)
   }
@@ -79,7 +79,8 @@ case class BuildStatus(number: String,
     id: String,
     timestamp: String,
     duration: String,
-    actions: Actions
+    actions: Actions,
+    url: String
 ) {
   def isSuccess = result == "SUCCESS"
 }
