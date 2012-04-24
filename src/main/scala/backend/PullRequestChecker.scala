@@ -28,6 +28,9 @@ class GhPullPoller(ghapi: GithubAPI, listener: ActorRef) extends Actor {
 
 /** This actor is responsible for validating that a pull request has had all required tests executed
  * and that they have passed.
+ * 
+ * Note: Any job sent to this actor must support one and only one build parameter,
+ * "pullrequest"
  */
 class PullRequestChecker(ghapi: GithubAPI, jobBuilder: ActorRef) extends Actor {
   
@@ -78,8 +81,14 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilder: ActorRef) extends Actor {
  */
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: String, notify: ActorRef) extends Actor {
   def receive: Receive = {
-    case BuildResult(success) => 
-      ghapi.makepullrequestcomment(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, "jenkins job %s: %s" format (job, success.toString))
+    case BuildResult(success, url) =>
+      val successString = if(success) "Success" else "Failed"
+      val comment = 
+        "jenkins job %s: %s - %s" format (job, successString, url)
+      ghapi.makepullrequestcomment(pull.base.repo.owner.login, 
+                                   pull.base.repo.name,
+                                   pull.number.toString,
+                                   comment)
       notify ! CheckPullRequestDone(pull, job)
   }
 }

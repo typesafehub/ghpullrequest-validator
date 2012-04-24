@@ -7,7 +7,7 @@ import akka.util.duration._
 
 case object CheckJobAgain
 case class BuildProject(name: String, args: Map[String,String], watcher: ActorRef)
-case class BuildResult(success: Boolean)
+case class BuildResult(success: Boolean, url: String)
   
 /** An actor that can build jenkins jobs. */
 class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor {
@@ -29,7 +29,8 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor {
     
     // Build and then wait for job to start...
     api.buildJob(b.name, b.args)
-    // Schedule a job to find the latest built job soon.
+    
+    // TODO - Rather than checking in 30 seconds, just keep polling until we find the job...
     val system = context.system
     system.scheduler.scheduleOnce(30 seconds) {
       val build = (for {
@@ -42,7 +43,7 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor {
           val watcher = system.actorOf(Props().withCreator(new JobWatcher(api, b.name, number, b.watcher)))
           system.scheduler.scheduleOnce(1 minutes, watcher, CheckJobAgain)
         case None => 
-          b.watcher ! BuildResult(false)
+          b.watcher ! BuildResult(false, "Failed to start build!")
       }  
     }
   }
@@ -54,7 +55,7 @@ class JobWatcher(api: JenkinsAPI, jobname: String, buildnumber: String, watcher:
     case CheckJobAgain => 
       val status = jobStatus
       if(!status.building) {
-        watcher ! BuildResult(status.isSuccess)
+        watcher ! BuildResult(status.isSuccess, status.url)
         context.become(DoNothing)
       } else context.system.scheduler.scheduleOnce(1 minutes, self, CheckJobAgain)
   }
