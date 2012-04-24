@@ -10,9 +10,9 @@ object Backend {
    * comments appropriately on the given project which jenkins jobs successfully passed.
    */
   def makeSystem(ghapi: GithubAPI, japi: JenkinsAPI, system: ActorSystem): ActorRef = {
-    val jobBuilder = system.actorOf(Props().withCreator(new JenkinsJobBuilder(japi)))
-    val prchecker = system.actorOf(Props().withCreator(new PullRequestChecker(ghapi, jobBuilder)))
-    val GhPullPoller = system.actorOf(Props().withCreator(new GhPullPoller(ghapi, prchecker)))
+    val jobBuilder = system.actorOf(Props(new JenkinsJobBuilder(japi)))
+    val prchecker = system.actorOf(Props(new PullRequestChecker(ghapi, jobBuilder)))
+    val GhPullPoller = system.actorOf(Props(new GhPullPoller(ghapi, prchecker)))
     GhPullPoller
   }
   

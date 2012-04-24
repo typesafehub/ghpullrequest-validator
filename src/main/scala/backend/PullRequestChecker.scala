@@ -14,7 +14,7 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: String)
  */
 class GhPullPoller(ghapi: GithubAPI, listener: ActorRef) extends Actor {
   def receive: Receive = {
-    case c @ CheckPullRequests(user, proj, jobs) => 
+    case CheckPullRequests(user, proj, jobs) => 
       checkPullRequests(user, proj, jobs)
   }
   
@@ -60,7 +60,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilder: ActorRef) extends Actor {
     } yield job
 
     def makeCommenter(job: String): ActorRef =
-      context.system.actorOf(Props().withCreator(new PullRequestCommenter(ghapi, pull, job, self)))
+      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)))
     
     // For all remaining verification jobs, spit out a new job.
     for {

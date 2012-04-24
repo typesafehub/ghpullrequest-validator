@@ -14,7 +14,7 @@ case class BuildResult(success: Boolean, url: String)
 class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor {
   
   def receive: Receive = {
-    case b @ BuildProject(_, _, _) => buildAndWatch(b)
+    case b: BuildProject => buildAndWatch(b)
   }
   
   /** Fires off the job, finds it in the API and then spawns a watcher to check for its completion. */
@@ -43,7 +43,7 @@ class JobStartWatcher(api: JenkinsAPI, b: BuildProject) extends Actor with DoNot
       findBuild match {
         case Some(number) =>
           // Create a "done" watcher and let him go to town on the specific build.
-          val watcher = context.system.actorOf(Props().withCreator(new JobWatcher(api, b.name, number, b.watcher)))
+          val watcher = context.actorOf(Props(new JobWatcher(api, b.name, number, b.watcher)))
           context.system.scheduler.scheduleOnce(1 minutes, watcher, CheckJobDone)
           context.become(DoNothing)
         case None        =>
