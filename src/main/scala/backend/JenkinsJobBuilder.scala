@@ -43,7 +43,7 @@ class JobStartWatcher(api: JenkinsAPI, b: BuildProject) extends Actor with DoNot
       findBuild match {
         case Some(number) =>
           // Create a "done" watcher and let him go to town on the specific build.
-          val watcher = context.actorOf(Props(new JobWatcher(api, b.name, number, b.watcher)))
+          val watcher = context.actorOf(Props(  new JobWatcher(api, b.name, number, b.watcher)))
           context.system.scheduler.scheduleOnce(1 minutes, watcher, CheckJobDone)
           context.become(DoNothing)
         case None        =>

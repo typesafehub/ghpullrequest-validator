@@ -12,7 +12,14 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: String)
 /** A class that continually polls github for pull requests and notifies
  * a listener when they are discovered.
  */
-class GhPullPoller(ghapi: GithubAPI, listener: ActorRef) extends Actor {
+class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor {
+  
+  // Create the listener of pull request checks as a nested actor so it's failures
+  // get reported to us.
+  // TODO - better way of disassociating these two...
+  // Perhaps an actor that just grabs pull requests and sends messages for them...
+  val listener = context.actorOf(listenerProps)
+  
   def receive: Receive = {
     case CheckPullRequests(user, proj, jobs) => 
       checkPullRequests(user, proj, jobs)
@@ -32,11 +39,11 @@ class GhPullPoller(ghapi: GithubAPI, listener: ActorRef) extends Actor {
  * Note: Any job sent to this actor must support one and only one build parameter,
  * "pullrequest"
  */
-class PullRequestChecker(ghapi: GithubAPI, jobBuilder: ActorRef) extends Actor {
+class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor {
+  val jobBuilder = context.actorOf(jobBuilderProps)
   
   // cache of currently validating pull requests so we don't duplicate effort....
-  @volatile
-  private var active = Set.empty[String]
+  var active = Set.empty[String]
   
   
   def receive: Receive = {
