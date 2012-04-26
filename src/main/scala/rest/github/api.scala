@@ -61,19 +61,14 @@ trait API {
   
   def pullrequestcomments(user: String, repo: String, number: String): List[Comment] = {
     val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user,repo,number))
-    val action = url >- { x => 
-       println(x)
-       parseJsonTo[List[Comment]](x)
-    }
+    val action = url >- parseJsonTo[List[Comment]]
     Http(action)
   }
 
   def makepullrequestcomment(user: String, repo: String, number: String, comment: String): Comment = {
     val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user, repo, number))
     val json = IssueComment(comment).toJson
-    println("json = " + json)
     val action = (url.POST << json >- parseJsonTo[Comment])
-    println("action = " + action)
     Http(action)
   }
     

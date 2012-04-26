@@ -76,7 +76,8 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     } {
       active += hash(pull,job)
       jobBuilder ! BuildProject(job, 
-                                Map("pullrequest" -> pull.number.toString), 
+                                Map("pullrequest" -> pull.number.toString,
+                                    "mergebranch" -> pull.base.ref), 
                                 makeCommenter(job))
     }
   }

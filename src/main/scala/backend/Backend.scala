@@ -1,6 +1,6 @@
 package backend
 
-import akka.actor.{ActorRef,ActorSystem,Props}
+import akka.actor.{ActorRef,ActorRefFactory,Props}
 import rest.github.{API=>GithubAPI}
 import rest.jenkins.{API=>JenkinsAPI}
 
@@ -14,7 +14,7 @@ object Backend {
   /** Constructs an actor system that takes "backend.CheckPullRequests" and
    * comments appropriately on the given project which jenkins jobs successfully passed.
    */
-  def apply(ghapi: GithubAPI, japi: JenkinsAPI, system: ActorSystem): Backend = new Backend {
+  def apply(ghapi: GithubAPI, japi: JenkinsAPI, system: ActorRefFactory): Backend = new Backend {
     private val backendSystem = {
       val jobBuilder = Props(new JenkinsJobBuilder(japi))
       val prchecker = Props(new PullRequestChecker(ghapi, jobBuilder))
