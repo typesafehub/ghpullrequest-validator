@@ -1,5 +1,7 @@
 resolvers += Classpaths.typesafeResolver
 
+resolvers += "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
+
 addSbtPlugin("com.typesafe.startscript" % "xsbt-start-script-plugin" % "0.5.1")
 
 // Use the Play sbt plugin for Play projects
