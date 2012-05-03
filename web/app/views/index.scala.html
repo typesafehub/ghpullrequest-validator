@@ -1,0 +1,18 @@
+@(configs: Seq[backend.Config], configForm: Form[backend.Config])
+
+@import helper._
+
+@main("Github PullRequest Validator") {
+    
+   <h1>@configs.size task(s)</h1>
+    <ul>
+        @configs.map { config =>
+            <li>
+                @config.project.toString
+            </li>
+        }
+    </ul>
+
+   @addcheck(configForm)
+    
+}

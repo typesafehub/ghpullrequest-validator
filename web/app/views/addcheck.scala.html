@@ -1,0 +1,11 @@
+@(myForm: Form[backend.Config])
+
+@helper.form(action = routes.PullRequest.submit) {
+  @helper.inputText(myForm("githubUser.user"))
+    
+  @helper.inputPassword(myForm("githubUser.password")) 
+
+  @helper.repeat(myForm("jenkinsJobs"), min = 1) { jobField =>
+    @helper.inputText(jobField)
+  }
+}
