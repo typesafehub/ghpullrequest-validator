@@ -1,34 +1,63 @@
 package backend
 
 import akka.actor.{Actor,ActorSystem, Props}
+import akka.dispatch.Future
 import akka.util.duration._
+import akka.pattern.ask
 
 
 /** Interface for interaction with a persisted github->jenkins configuration.
  * Send it config and it starts checking your pull requests.
  */
 trait BackendStore {
-  def addConfig(config: Config): Unit
-  
+  /** Adds a configuration to the backend that will result in checking
+   * pull requests for a given project.
+   */
+  def addConfig(config: Config): Future[Seq[Config]]
+  /** Returns all the configurations used in this backend. */
+  def configs: Future[Seq[Config]]
+  /** Removes a configuration from the list of configs. 
+   * returns the new list of configurations.
+   */
+  def deleteConfig(config: Config): Future[Seq[Config]]
   // TODO - Save and restore?
 }
 object BackendStore {
   def apply(system: ActorSystem): BackendStore = new BackendStore {
     lazy val backendStore = system.actorOf(Props(new BackendStoreActor))
     
-    def addConfig(config: Config): Unit = backendStore ! config
+    def addConfig(config: Config): Future[Seq[Config]] = 
+      ask(backendStore, config)(1 minutes).mapTo[Seq[Config]]
+    
+    def configs: Future[Seq[Config]] =
+      ask(backendStore, GetCurrentConfigs)(1 minutes).mapTo[Seq[Config]]
+    
+    def deleteConfig(config: Config): Future[Seq[Config]] =
+      ask(backendStore, DeleteConfig(config))(1 minutes).mapTo[Seq[Config]]
   }
 }
 
 
 case object CheckAllProjects
+case object GetCurrentConfigs
+case class DeleteConfig(config: Config)
 class BackendStoreActor extends Actor {
   context.system.scheduler.scheduleOnce(1 second, self, CheckAllProjects)
-  
   final def receive: Receive = {
-    case c: Config        => updateOrAddConfig(c)
-    case CheckAllProjects => checkAllProjects()
+    case CheckAllProjects   => checkAllProjects()
+    case GetCurrentConfigs  => sendConfigsResponse()
+    case c: Config          => 
+      updateOrAddConfig(c)
+      sendConfigsResponse()
+    case DeleteConfig(config) =>
+      // TODO - shutdown the backend rather than ignore it...?
+      backends -= hashConfig(config)
+      configs  -= hashConfig(config)
+      sendConfigsResponse()
   }
+  
+  private def sendConfigsResponse(): Unit =
+    sender ! (configs map (_._2) toSeq)
   
   // Cache of generated backends.
   // TODO - this needs to be robust at some point.  For now, let's go for working and rebootable.
