@@ -5,6 +5,32 @@ A tool for automatically validating github pull requests with Jenkins
 
 
 
+Configuring
+-----------
+
+Here's an example `ghpr.conf` file.
+
+    scala: {
+      jenkins: {
+        url = "https://my.company.com/jenkins"
+        user: {
+          user = "buildbot"
+          password = "MY PASSWORD IS SECRET"
+        }
+        jobs: [ "flush-silly-mistakes" ]
+      }
+      github: {
+        user: {
+          user = "gh-commenter"
+          password = "MY PASSWORD IS SECRET"
+        }
+        project: {
+          user = "myname"
+          project = "myproject"
+        }
+      }
+    }
+
 
 
 Contributing
