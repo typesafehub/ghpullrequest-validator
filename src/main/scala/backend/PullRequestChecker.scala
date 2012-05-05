@@ -3,6 +3,7 @@ package backend
 import akka.actor.{ActorRef,Actor, Props}
 import akka.util.duration._
 import rest.github.{API=>GithubAPI}
+import util.control.Exception.catching
 
 
 case class CheckPullRequests(username: String, project: String, jobs: Set[String])
@@ -29,7 +30,8 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor {
     // TODO - cull pull requests that haven't changed since the last time we checked....
     for {
       p <- ghapi.pullrequests(ghuser, ghproject)
-      pull = ghapi.pullrequest(ghuser, ghproject, p.number.toString)
+      pull <- catching(classOf[Exception]) opt 
+                 ghapi.pullrequest(ghuser, ghproject, p.number.toString)
     } listener ! CheckPullRequest(pull, jobs)
 }
 
