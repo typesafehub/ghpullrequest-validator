@@ -65,6 +65,12 @@ trait API {
     Http(action)
   }
 
+  def pullrequestcommits(user: String, repo: String, number: String): List[CommitInfo] = {
+    val url = makeAPIurl("/repos/%s/%s/pulls/%s/commits" format (user,repo,number))
+    val action = url >- parseJsonTo[List[CommitInfo]]
+    Http(action)
+  }
+
   def makepullrequestcomment(user: String, repo: String, number: String, comment: String): Comment = {
     val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user, repo, number))
     val json = IssueComment(comment).toJson
@@ -111,20 +117,23 @@ case class Repository(
   name: String,
   owner: User,
   url: String,
-  git_url: String
+  git_url: String,
+  updated_at: String,
+  created_at: String,
+  pushed_at: String
 )
 
 case class Pull(
   number: Int,
-  head: Commit,
+  head: GitRef,
+  base: GitRef,
   user: User,
   title: String,
   body: String,
   state: String,
   updated_at: String,
   created_at: String,
-  mergeable: Boolean,
-  base: Commit
+  mergeable: Boolean
 ) extends Ordered[Pull] {
   def compare(other: Pull): Int = number compare other.number
   def sha10  = head.sha10
@@ -134,7 +143,7 @@ case class Pull(
   def time   = updated_at drop (date.length + 1)
 }
 
-case class Commit(
+case class GitRef(
   sha: String,
   label: String,
   ref: String,
@@ -143,6 +152,33 @@ case class Commit(
 ) {
   def sha10 = sha take 10
 }
+
+case class CommitInfo(
+  sha: String,
+  url: String,
+  author: User,
+  committer: User, 
+  commit: Commit,
+  parents: List[CommitRef]
+)
+
+case class Commit(
+  url: String,
+  message: String,
+  tree: CommitRef,
+  author: CommitAuthor,
+  committer: CommitAuthor  
+)
+
+case class CommitRef(
+  sha: String,
+  url: String)
+
+case class CommitAuthor(
+  name: String,
+  date: String,
+  email: String
+)
 
 case class Comment(
     url: String,
