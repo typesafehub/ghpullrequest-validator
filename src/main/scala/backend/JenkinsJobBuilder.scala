@@ -8,6 +8,7 @@ import akka.util.duration._
 case object CheckJobDone
 case object CheckJobStart
 case class BuildProject(name: String, args: Map[String,String], watcher: ActorRef)
+case class BuildStarted(url: String)
 case class BuildResult(success: Boolean, url: String)
   
 /** An actor that can build jenkins jobs. */
@@ -41,11 +42,12 @@ class JobStartWatcher(api: JenkinsAPI, b: BuildProject) extends Actor with DoNot
   def receive: Receive = {
     case CheckJobStart => 
       findBuild match {
-        case Some(number) =>
+        case Some((number, status)) =>
           // Create a "done" watcher and let him go to town on the specific build.
           val watcher = context.actorOf(Props(  new JobWatcher(api, b.name, number, b.watcher)))
           context.system.scheduler.scheduleOnce(1 minutes, watcher, CheckJobDone)
           context.become(DoNothing)
+          b.watcher ! BuildStarted(status.url)
         case None        =>
           // Could not find the build yet, let's look again soon.
           context.system.scheduler.scheduleOnce(1 minutes, self, CheckJobStart)
@@ -66,7 +68,7 @@ class JobStartWatcher(api: JenkinsAPI, b: BuildProject) extends Actor with DoNot
     (for {
         status <- api.buildStatusForJob(b.name).view
         if isSame(status.actions.parameters, b.args)
-     } yield status.number) headOption
+     } yield status.number -> status) headOption
 }
 
 /** An actor that watches a specific job and returns its status when the job is completed. */

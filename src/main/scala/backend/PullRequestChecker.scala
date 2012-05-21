@@ -91,6 +91,13 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
  */
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: String, notify: ActorRef) extends Actor {
   def receive: Receive = {
+    case BuildStarted(url) =>
+      val comment = 
+        "Started jenkins job %s at %s" format (job, url)
+        ghapi.makepullrequestcomment(pull.base.repo.owner.login, 
+                                     pull.base.repo.name,
+                                     pull.number.toString,
+                                     comment)
     case BuildResult(success, url) =>
       val successString = if(success) "Success" else "Failed"
       val comment = 
