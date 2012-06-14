@@ -60,12 +60,38 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
                           pull.head.sha,
                           job)
   
+  // TODO - Ordering.
   private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[String]): Unit = {
-    val checkedBuilds = for {
-      comment <- ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
+    val comments = ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
+    val commits = ghapi.pullrequestcommits(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
+    def lastJobDoneTime(job: String): Option[String] = (
+        for {
+          comment <- comments
+          if comment.body startsWith ("jenkins job " + job)
+        } yield comment.created_at
+      ).lastOption 
+    
+    def lastJobRequestTime(job: String): String = {
+      val created: Seq[String] = Vector(pull.created_at)
+      val requests = for {
+        comment <- comments
+        if (comment.body contains ("PLS REBUILD ALL")) || (comment.body contains ("PLS REBUILD " + job))
+      } yield comment.created_at
+      // TODO - Check commit times, so we rebuild on new commits.
+      // val newCommits = <search commits for last updated time>
+      val commitTimes = commits map (_.commit.author.date)
+      (created ++ requests ++ commitTimes) reduce ( (x,y) => if (x > y) x else y )
+    }
+    
+    def needsRebuilt(job: String): Boolean =
+      (lastJobDoneTime(job) 
+          map (_ < lastJobRequestTime(job)) 
+          getOrElse true)
+      
+    val builds = for {
+      comment <- comments
       job <- jenkinsJobs
-      if comment.body startsWith ("jenkins job " + job)
-      // TODO - Check to see if *content* of pull request changed since this comment.
+      if needsRebuilt(job)
     } yield job
 
     def makeCommenter(job: String): ActorRef =
@@ -73,7 +99,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     
     // For all remaining verification jobs, spit out a new job.
     for {
-      job <- (jenkinsJobs -- checkedBuilds).toSeq.sorted
+      job <- (builds).toSeq.sorted
       if !active(hash(pull, job))
     } {
       active += hash(pull,job)
@@ -83,6 +109,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
                                 makeCommenter(job))
     }
   }
+  
 }
 
 /** Comments on a given pull request with the result of a jenkins job. 
