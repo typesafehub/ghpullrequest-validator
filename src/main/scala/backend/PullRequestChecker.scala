@@ -87,9 +87,8 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       (lastJobDoneTime(job) 
           map (_ < lastJobRequestTime(job)) 
           getOrElse true)
-      
+          
     val builds = for {
-      comment <- comments
       job <- jenkinsJobs
       if needsRebuilt(job)
     } yield job
