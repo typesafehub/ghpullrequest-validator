@@ -88,10 +88,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
           map (_ < lastJobRequestTime(job)) 
           getOrElse true)
           
-    val builds = for {
-      job <- jenkinsJobs
-      if needsRebuilt(job)
-    } yield job
+    val builds = jenkinsJobs filter needsRebuilt
 
     def makeCommenter(job: String): ActorRef =
       context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)))
