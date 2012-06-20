@@ -56,7 +56,7 @@ git checkout $mergebranch
 # Update branch
 git pull origin $mergebranch
 # Create new merging branch
-git checkout -b $newbranchname
+git checkout -B $newbranchname
 # Fetch pull request and merge into new branch.
 git fetch origin "+pull/${pullrequest}/head:pullreq/${pullrequest}"
 git merge "pullreq/${pullrequest}"
