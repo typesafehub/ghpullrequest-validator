@@ -48,25 +48,25 @@ trait API {
 
   /** Pulls in all the pull requests. */
   def pullrequests(user: String, repo: String): List[PullMini] = {
-    val url = makeAPIurl("/repos/%s/%s/pulls" format (user,repo))
+    val url = makeAPIurl("/repos/%s/%s/pulls?per_page=100" format (user,repo))
     val action = url >- parseJsonTo[List[PullMini]]
     Http(action)
   } 
   /** Grabs the information for a single pull request. */
   def pullrequest(user: String, repo: String, number: String): Pull = {
-    val url = makeAPIurl("/repos/%s/%s/pulls/%s" format (user,repo,number))
+    val url = makeAPIurl("/repos/%s/%s/pulls/%s?per_page=100" format (user,repo,number))
     val action = url >- parseJsonTo[Pull]
     Http(action)
   }
   
   def pullrequestcomments(user: String, repo: String, number: String): List[Comment] = {
-    val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user,repo,number))
+    val url = makeAPIurl("/repos/%s/%s/issues/%s/comments?per_page=100" format (user,repo,number))
     val action = url >- parseJsonTo[List[Comment]]
     Http(action)
   }
 
   def pullrequestcommits(user: String, repo: String, number: String): List[CommitInfo] = {
-    val url = makeAPIurl("/repos/%s/%s/pulls/%s/commits" format (user,repo,number))
+    val url = makeAPIurl("/repos/%s/%s/pulls/%s/commits?per_page=100" format (user,repo,number))
     val action = url >- parseJsonTo[List[CommitInfo]]
     Http(action)
   }
