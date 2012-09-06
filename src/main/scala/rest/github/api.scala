@@ -9,7 +9,8 @@ object Authenticate {
   val authScopes = """{
  "scopes": [ 
    "user", 
-   "repo" 
+   "repo",
+   "repo:status"
  ],
  "note": "rest.github.Authenticate API Access"
 }"""
@@ -75,6 +76,19 @@ trait API {
     val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user, repo, number))
     val json = IssueComment(comment).toJson
     val action = (url.POST << json >- parseJsonTo[Comment])
+    Http(action)
+  }
+  
+  def pullrequeststatuses(user: String, repo: String, commitsha: String): List[PullRequestStatus] = {
+    val url = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
+    val action = url >- parseJsonTo[List[PullRequestStatus]]
+    Http(action)
+  }
+  
+  def makepullrequeststatus(user: String, repo: String, commitsha: String, status: PullRequestStatus): PullRequestStatus = {
+    val url = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
+    val json = status.toJson
+    val action = (url.POST << json >- parseJsonTo[PullRequestStatus])
     Http(action)
   }
     
@@ -187,6 +201,26 @@ case class Comment(
     user: User,
     created_at: String,
     updated_at: String)
+    
+case class PullRequestStatus(
+  // User defined
+  state: String,
+  target_url: Option[String]=None,
+  description: Option[String]=None,
+  // Github Added
+  id: Option[String] = None,
+  created_at: Option[String]=None,
+  updated_at: Option[String]=None,
+  url: Option[String]=None,
+  creator: Option[User]=None) {
+  def toJson = makeJson(this)
+}
+object PullRequestStatus {
+  final val PENDING = "pending"
+  final val SUCCESS = "success"
+  final val ERROR = "error"
+  final val FAILURE = "failure"
+}
 
 
 case class IssueComment(body: String) {
