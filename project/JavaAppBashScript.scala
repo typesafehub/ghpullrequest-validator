@@ -1,4 +1,58 @@
-#!/bin/bash
+
+
+object JavaAppBashScript {
+  
+  def generateScript(mainClass: String,
+                     libDir: String = "$(dirname $(realpath $0))/../lib",
+                     configFile: Option[String] = None): String = {
+    val sb = new StringBuffer
+    sb append template_header
+    sb append mainClassDefine(mainClass)
+    sb append defaultUsage
+    configFile foreach (f => sb append configFileDefine(f))
+    sb append defineLibLocation(libDir)
+    sb append template_footer
+    sb.toString
+  }
+  
+  def defineLibLocation(libDir: String) =
+    "declare -r lib_dir=%s" format (libDir)
+
+  def configFileDefine(configFile: String) =
+    "declare -r script_conf_file=\"%s\"" format (configFile)
+  
+  def mainClassDefine(mainClass: String) = 
+    "declare -r app_mainclass=\"%s\"\n" format (mainClass)
+  
+  
+  val defaultUsage = """usage() {
+ cat <<EOM
+Usage: $script_name [options]
+
+  -h | -help         print this message
+  -v | -verbose      this runner is chattier
+  -d | -debug        set sbt log level to debug
+  -mem    <integer>  set memory options (default: $sbt_mem, which is $(get_mem_opts $sbt_mem))
+  -jvm-debug <port>  Turn on JVM debugging, open at the given port.
+
+  # java version (default: java from PATH, currently $(java -version 2>&1 | grep version))
+  -java-home <path>         alternate JAVA_HOME
+
+  # jvm options and output control
+  JAVA_OPTS          environment variable, if unset uses "$java_opts"
+  -Dkey=val          pass -Dkey=val directly to the java runtime
+  -J-X               pass option -X directly to the java runtime 
+                     (-J is stripped)
+
+In the case of duplicated or conflicting options, the order above
+shows precedence: JAVA_OPTS lowest, command line options highest.
+EOM
+}
+"""
+  
+  
+  
+  val template_header = """#!/bin/bash
 
 ###  ------------------------------- ###
 ###  Helper methods for BASH scripts ###
@@ -145,55 +199,12 @@ loadConfigFile() {
 }
 
 ###  ------------------------------- ###
-###  Start of variables/templates    ###
+###  Start of customized settings    ###
 ###  ------------------------------- ###
-
-
-
-# @LOCATION (lib)@ #
-declare -r lib_dir=$(dirname $(realpath $0))/../lib
-# @END_LOCATION@ #
-
-# @DEFINE (process_my_args)@ #
-process_my_args () {
-  echo ""
-}
-# @END_DEFINE@ #
-
-# @DEFINE (usage)@ #
-usage() {
- cat <<EOM
-Usage: $script_name [options]
-
-  -h | -help         print this message
-  -v | -verbose      this runner is chattier
-  -d | -debug        set sbt log level to debug
-  -mem    <integer>  set memory options (default: $sbt_mem, which is $(get_mem_opts $sbt_mem))
-  -jvm-debug <port>  Turn on JVM debugging, open at the given port.
-
-  # java version (default: java from PATH, currently $(java -version 2>&1 | grep version))
-  -java-home <path>         alternate JAVA_HOME
-
-  # jvm options and output control
-  JAVA_OPTS          environment variable, if unset uses "$java_opts"
-  -Dkey=val          pass -Dkey=val directly to the java runtime
-  -J-X               pass option -X directly to the java runtime 
-                     (-J is stripped)
-
-In the case of duplicated or conflicting options, the order above
-shows precedence: JAVA_OPTS lowest, command line options highest.
-EOM
-}
-# @END_DEFINE @ #
-
-# @DEFINE (app_mainclass)@ #
-declare -r app_mainclass="GhApp"
-# @END_DEFINE@ #
-
-# @LOCATION (script_conf_file)@ #
-# declare -r script_conf_file="/dev/null"
-# @END_LOCATION@ #
-
+"""
+    
+    
+  val template_footer = """
 
 ###  ------------------------------- ###
 ###  Main script                     ###
@@ -210,5 +221,5 @@ declare -r app_classpath="$lib_dir/*"
 [[ -f "$script_conf_file" ]] && set -- $(loadConfigFile "$script_conf_file") "$@"
 
 run "$@"
-
-
+"""
+}

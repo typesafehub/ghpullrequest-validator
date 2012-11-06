@@ -4,7 +4,7 @@ seq(StartScriptPlugin.startScriptForClassesSettings: _*)
 
 resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases"
 
-name := "ghpullreq-validator"
+name := "ghpr"
 
 organization := "com.typesafe"
 
