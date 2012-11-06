@@ -14,14 +14,28 @@ object GhApp extends scala.App {
   val actors =  ActorSystem()
   val system = BackendStore( actors)
   
+  if(configs.isEmpty) {
+    System.err println "No configuration defined!"
+    System exit 1
+  }
+  
   // Load configuration to start system.
   for((name, c) <- configs) {
     println("Adding config for: " + name)
     system addConfig c
   }
   
+  // Pull either the specified configuration files, or nothing.  
+  def configFiles: Seq[java.io.File] = 
+    if(args.isEmpty) Seq(new java.io.File("ghpr.conf"))
+    else             args map (a => new java.io.File(a))
   
-  def configs = getConfigs(ConfigFactory.parseFile(new java.io.File("ghpr.conf")))
+  
+  lazy val configs = for {
+    file <- configFiles
+    if file.exists
+    config <- getConfigs(ConfigFactory parseFile file)
+  } yield config
   
   def getConfigs(config: TConfig): Seq[(String,Config)] = {
     // TODO - useful error messages on failure.
