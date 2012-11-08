@@ -83,4 +83,8 @@ case class BuildStatus(number: String,
     url: String
 ) {
   def isSuccess = result == "SUCCESS"
+    
+  // TODO - Is this ok to assume?  
+  def timestampDate =
+    new java.util.Date(timestamp.toLong)
 }

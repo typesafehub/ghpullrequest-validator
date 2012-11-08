@@ -18,7 +18,7 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: String)
  * "pullrequest"
  */
 class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor {
-  val jobBuilder = context.actorOf(jobBuilderProps)
+  val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
   // cache of currently validating pull requests so we don't duplicate effort....
   var active = Set.empty[String]
@@ -67,7 +67,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     val builds = jenkinsJobs filter needsRebuilt
 
     def makeCommenter(job: String): ActorRef =
-      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)))
+      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job + "-commenter-" + pull.number)
     
     // For all remaining verification jobs, spit out a new job.
     for {

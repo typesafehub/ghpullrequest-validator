@@ -28,5 +28,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: String
                                    pull.number.toString,
                                    comment)
       notify ! CheckPullRequestDone(pull, job)
+      // TODO - Can we kill ourselves now? I think so.
+      context stop self
   }
 }

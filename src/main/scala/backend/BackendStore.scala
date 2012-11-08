@@ -41,6 +41,7 @@ object BackendStore {
 case object CheckAllProjects
 case object GetCurrentConfigs
 case class DeleteConfig(config: Config)
+
 class BackendStoreActor extends Actor {
   context.system.scheduler.scheduleOnce(1 second, self, CheckAllProjects)
   final def receive: Receive = {
