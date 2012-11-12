@@ -1,6 +1,7 @@
 import backend._
 import collection.JavaConverters._
 import akka.actor.ActorSystem
+import akka.event.{Logging, LoggingAdapter}
 import com.typesafe.config.{
   Config=>TConfig,
   ConfigList,
@@ -10,18 +11,18 @@ import com.typesafe.config.{
   ConfigFactory}
 
 object GhApp extends scala.App {
-   
   val actors =  ActorSystem()
-  val system = BackendStore( actors)
+  val system = BackendStore(actors)
+  val log = Logging.getLogger(actors, this)
   
   if(configs.isEmpty) {
-    System.err println "No configuration defined!"
+    log.error("No configuration defined!")
     System exit 1
   }
   
   // Load configuration to start system.
   for((name, c) <- configs) {
-    println("Adding config for: " + name)
+    log.debug("Adding config for: " + name)
     system addConfig c
   }
   
