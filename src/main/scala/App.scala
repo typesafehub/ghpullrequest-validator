@@ -79,15 +79,15 @@ object GhApp extends scala.App {
         jenkinsUrl <- configString(jo.get("url"))
         jusero <- configObj(jo.get("user"))
         jenkinsUser <- c2cred(jusero)
-        jobs <- configStringList(jo.get("jobs"))
+        rawJobs <- configStringList(jo.get("jobs"))
+        jobs = (rawJobs map JenkinsJob.apply).toSet
         // Github config
         gho <-configObj(c.get("github"))
         ghuo <- configObj(gho.get("user"))
         ghuser <- c2cred(ghuo)
         gpo <- configObj(gho.get("project"))
         project  <- c2proj(gpo)
-        // TODO - Jobs
-      } yield Config(ghuser, jenkinsUrl, jenkinsUser, project, jobs.toSet)
+      } yield Config(ghuser, jenkinsUrl, jenkinsUser, project, jobs)
 
     val configs = 
       for {
