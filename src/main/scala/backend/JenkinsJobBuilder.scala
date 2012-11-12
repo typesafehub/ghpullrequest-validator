@@ -29,10 +29,18 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor {
       build.watcher ! BuildStarted(status.url)
       System.err.println("Job started: " + build.name + "-" + status.number)
       context.actorOf(
-          Props(new JenkinsJobWatcher(api, build, status.number, build.watcher)),
+          Props(new JenkinsJobWatcher(api, build, status.number, self)),
           build.name + "-" + status.number)
 
     case JobFinished(build, status) =>
       build.watcher ! BuildResult(status.isSuccess, status.url)
+  }
+  
+  override def postRestart(t: Throwable): Unit = {
+    System.err.println("Jenkins Job Builder restarted: " + t)
+  }
+  
+  override def postStop(): Unit = {
+    System.err.println("Jenkins Job Builder stopped.")
   }
 }
