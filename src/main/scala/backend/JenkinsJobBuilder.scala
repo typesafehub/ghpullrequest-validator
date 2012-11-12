@@ -6,7 +6,7 @@ import akka.util.duration._
 import rest.jenkins.BuildStatus
 
 // External Messages
-case class BuildProject(name: String, args: Map[String,String], watcher: ActorRef)
+case class BuildProject(job: JenkinsJob, args: Map[String,String], watcher: ActorRef)
 case class BuildStarted(url: String)
 case class BuildResult(success: Boolean, url: String)
 
@@ -20,17 +20,17 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor {
   // Pretty simple implementation, just spawn someone else up to start a job.
   // TODO - Detect failure and handle them....
   def receive: Receive = {
-    case b: BuildProject => 
+    case build: BuildProject => 
       val me = self
-      System.err.println("Starting job watcher for: " +b.name)
-      context actorOf Props(new JenkinsJobStartWatcher(api, b, me))
+      System.err.println("Starting job watcher for: " +build.job.name)
+      context actorOf Props(new JenkinsJobStartWatcher(api, build, me))
 
     case JobStarted(build, status) =>
       build.watcher ! BuildStarted(status.url)
-      System.err.println("Job started: " + build.name + "-" + status.number)
+      System.err.println("Job started: " + build.job.name + "-" + status.number)
       context.actorOf(
           Props(new JenkinsJobWatcher(api, build, status.number, self)),
-          build.name + "-" + status.number)
+          build.job.name + "-" + status.number)
 
     case JobFinished(build, status) =>
       build.watcher ! BuildResult(status.isSuccess, status.url)

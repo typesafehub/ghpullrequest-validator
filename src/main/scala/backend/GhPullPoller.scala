@@ -22,7 +22,7 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor {
       checkPullRequests(user, proj, jobs)
   }
   
-  private def checkPullRequests(ghuser: String, ghproject: String, jobs: Set[String]): Unit = 
+  private def checkPullRequests(ghuser: String, ghproject: String, jobs: Set[JenkinsJob]): Unit = 
     // TODO - cull pull requests that haven't changed since the last time we checked....
     for {
       p <- ghapi.pullrequests(ghuser, ghproject)
