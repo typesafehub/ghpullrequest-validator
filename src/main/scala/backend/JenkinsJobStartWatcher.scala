@@ -17,10 +17,10 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
   // 2. start the job on jenkins
   // 3. Set timeout to check when the job has started.
   val myTime = 
-    (api.buildStatusForJob(b.name).headOption
+    (api.buildStatusForJob(b.job).view.headOption
      map (_.timestampDate)
      getOrElse new java.util.Date(0))
-  api.buildJob(b.name, b.args)
+  api.buildJob(b.job, b.args)
   context setReceiveTimeout (30 seconds)
   
   def receive: Receive = {
@@ -51,7 +51,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
   private final def findBuild =
     (for {
         // Make sure this is a new build.
-        status <- api.buildStatusForJob(b.name).view takeWhile (_.timestampDate after myTime)
+        status <- api.buildStatusForJob(b.job).view takeWhile (_.timestampDate after myTime)
         if isSame(status.actions.parameters, b.args)
      } yield status.number -> status) headOption
 }

@@ -16,7 +16,7 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildProject, buildnumber: Strin
         context stop self
       } else context setReceiveTimeout (1 minutes)
   }
-  private def jobStatus = api.buildStatus(build.name, buildnumber)
+  private def jobStatus = api.buildStatus(build.job, buildnumber)
   /** A timeout timer that wakes us up to check build status. */
   context setReceiveTimeout (2 minutes)
 }
