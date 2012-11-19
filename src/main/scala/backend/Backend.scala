@@ -7,7 +7,7 @@ import rest.jenkins.{API=>JenkinsAPI}
 /** The interface for interacting with the Akka backend.  All calls are asynchronous. */
 trait Backend {
   /** Notifies the back end to check a github project using the given jenkins jobs. */
-  def checkPullRequestsOnSystem(ghuser: String, ghproject: String, jobs: Set[String]): Unit
+  def checkPullRequestsOnSystem(ghuser: String, ghproject: String, jobs: Set[JenkinsJob]): Unit
 }
 object Backend {
   
@@ -20,7 +20,7 @@ object Backend {
       val prchecker = Props(new PullRequestChecker(ghapi, jobBuilder))
       system.actorOf(Props(new GhPullPoller(ghapi, prchecker)))
     }
-    def checkPullRequestsOnSystem(ghuser: String, ghproject: String, jobs: Set[String]): Unit =
+    def checkPullRequestsOnSystem(ghuser: String, ghproject: String, jobs: Set[JenkinsJob]): Unit =
       backendSystem ! CheckPullRequests(ghuser, ghproject, jobs)
   }
 

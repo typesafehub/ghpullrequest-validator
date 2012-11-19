@@ -6,9 +6,9 @@ import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
 
 
-case class CheckPullRequests(username: String, project: String, jobs: Set[String])
-case class CheckPullRequest(pull: rest.github.Pull, jobs: Set[String])
-case class CheckPullRequestDone(pull: rest.github.Pull, job: String)
+case class CheckPullRequests(username: String, project: String, jobs: Set[JenkinsJob])
+case class CheckPullRequest(pull: rest.github.Pull, jobs: Set[JenkinsJob])
+case class CheckPullRequestDone(pull: rest.github.Pull, job: JenkinsJob)
 
 
 /** This actor is responsible for validating that a pull request has had all required tests executed
@@ -18,7 +18,7 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: String)
  * "pullrequest"
  */
 class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor {
-  val jobBuilder = context.actorOf(jobBuilderProps)
+  val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
   // cache of currently validating pull requests so we don't duplicate effort....
   var active = Set.empty[String]
@@ -30,24 +30,24 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
   }
   
   /** Generates a hash of a pullrequest/job pairing so we don't duplicate work. */
-  private def hash(pull: rest.github.Pull, job: String) =
+  private def hash(pull: rest.github.Pull, job: JenkinsJob) =
     "%s-%s-%s-%s" format (pull.base.repo.owner.login,
                           pull.base.repo.name,
                           pull.head.sha,
-                          job)
+                          job.name)
   
   // TODO - Ordering.
-  private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[String]): Unit = {
+  private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[JenkinsJob]): Unit = {
     val comments = ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
     val commits = ghapi.pullrequestcommits(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
-    def lastJobDoneTime(job: String): Option[String] = (
+    def lastJobDoneTime(job: JenkinsJob): Option[String] = (
         for {
           comment <- comments
           if comment.body startsWith ("jenkins job " + job)
         } yield comment.created_at
       ).lastOption 
     
-    def lastJobRequestTime(job: String): String = {
+    def lastJobRequestTime(job: JenkinsJob): String = {
       val created: Seq[String] = Vector(pull.created_at)
       val requests = for {
         comment <- comments
@@ -59,15 +59,15 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       (created ++ requests ++ commitTimes) reduce ( (x,y) => if (x > y) x else y )
     }
     
-    def needsRebuilt(job: String): Boolean =
+    def needsRebuilt(job: JenkinsJob): Boolean =
       (lastJobDoneTime(job) 
           map (_ < lastJobRequestTime(job)) 
           getOrElse true)
           
     val builds = jenkinsJobs filter needsRebuilt
 
-    def makeCommenter(job: String): ActorRef =
-      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)))
+    def makeCommenter(job: JenkinsJob): ActorRef =
+      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job + "-commenter-" + pull.number)
     
     // For all remaining verification jobs, spit out a new job.
     for {

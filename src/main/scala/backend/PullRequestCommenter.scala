@@ -10,7 +10,7 @@ import util.control.Exception.catching
  * Note: This only helps the PulLRequestValidator actors and should not be used
  * stand-alone.
  */
-class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: String, notify: ActorRef) extends Actor {
+class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, notify: ActorRef) extends Actor {
   def receive: Receive = {
     case BuildStarted(url) =>
       val comment = 
@@ -28,5 +28,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: String
                                    pull.number.toString,
                                    comment)
       notify ! CheckPullRequestDone(pull, job)
+      // TODO - Can we kill ourselves now? I think so.
+      context stop self
   }
 }

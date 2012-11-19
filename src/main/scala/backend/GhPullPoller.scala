@@ -15,14 +15,14 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor {
   // get reported to us.
   // TODO - better way of disassociating these two...
   // Perhaps an actor that just grabs pull requests and sends messages for them...
-  val listener = context.actorOf(listenerProps)
+  val listener = context actorOf listenerProps
   
   def receive: Receive = {
     case CheckPullRequests(user, proj, jobs) => 
       checkPullRequests(user, proj, jobs)
   }
   
-  private def checkPullRequests(ghuser: String, ghproject: String, jobs: Set[String]): Unit = 
+  private def checkPullRequests(ghuser: String, ghproject: String, jobs: Set[JenkinsJob]): Unit = 
     // TODO - cull pull requests that haven't changed since the last time we checked....
     for {
       p <- ghapi.pullrequests(ghuser, ghproject)

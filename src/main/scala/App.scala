@@ -1,6 +1,7 @@
 import backend._
 import collection.JavaConverters._
 import akka.actor.ActorSystem
+import akka.event.{Logging, LoggingAdapter}
 import com.typesafe.config.{
   Config=>TConfig,
   ConfigList,
@@ -10,18 +11,18 @@ import com.typesafe.config.{
   ConfigFactory}
 
 object GhApp extends scala.App {
-   
   val actors =  ActorSystem()
-  val system = BackendStore( actors)
+  val system = BackendStore(actors)
+  val log = Logging.getLogger(actors, this)
   
   if(configs.isEmpty) {
-    System.err println "No configuration defined!"
+    log.error("No configuration defined!")
     System exit 1
   }
   
   // Load configuration to start system.
   for((name, c) <- configs) {
-    println("Adding config for: " + name)
+    log.debug("Adding config for: " + name)
     system addConfig c
   }
   
@@ -79,15 +80,15 @@ object GhApp extends scala.App {
         jenkinsUrl <- configString(jo.get("url"))
         jusero <- configObj(jo.get("user"))
         jenkinsUser <- c2cred(jusero)
-        jobs <- configStringList(jo.get("jobs"))
+        rawJobs <- configStringList(jo.get("jobs"))
+        jobs = (rawJobs map JenkinsJob.apply).toSet
         // Github config
         gho <-configObj(c.get("github"))
         ghuo <- configObj(gho.get("user"))
         ghuser <- c2cred(ghuo)
         gpo <- configObj(gho.get("project"))
         project  <- c2proj(gpo)
-        // TODO - Jobs
-      } yield Config(ghuser, jenkinsUrl, jenkinsUser, project, jobs.toSet)
+      } yield Config(ghuser, jenkinsUrl, jenkinsUser, project, jobs)
 
     val configs = 
       for {
