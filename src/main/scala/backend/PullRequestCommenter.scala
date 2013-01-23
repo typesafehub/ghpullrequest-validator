@@ -14,7 +14,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
   def receive: Receive = {
     case BuildStarted(url) =>
       val comment = 
-        "Started jenkins job %s at %s" format (job, url)
+        "Started jenkins job %s at %s" format (job.name, url)
         ghapi.makepullrequestcomment(pull.base.repo.owner.login, 
                                      pull.base.repo.name,
                                      pull.number.toString,
