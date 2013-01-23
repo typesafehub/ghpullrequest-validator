@@ -29,6 +29,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
         case Some((number, status)) =>
           // Create a "done" watcher and let him go to town on the specific build.
           // Pass the props to our parent so he "owns" the watcher when we die.
+          b.watcher ! BuildStarted(status.url)
           jenkinsService ! JobStarted(b, status)
           context stop self
         case None        =>
