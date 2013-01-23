@@ -22,8 +22,8 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
     case BuildResult(success, url) =>
       val successString = if(success) "Success" else "Failed"
       // make failures easier to spot
-      val sadKitty      = if(success) "" else "\n![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
-      val comment       = "jenkins job %s: %s - %s%s" format (job, successString, url, sadKitty)
+      val sadKitty      = if(success) "" else "![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
+      val comment       = "jenkins job %s: %s - %s\n%s" format (job.name, successString, url, sadKitty)
       ghapi.makepullrequestcomment(pull.base.repo.owner.login, 
                                    pull.base.repo.name,
                                    pull.number.toString,

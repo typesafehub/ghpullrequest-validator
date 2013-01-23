@@ -55,7 +55,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       } yield comment.created_at
       // TODO - Check commit times, so we rebuild on new commits.
       // val newCommits = <search commits for last updated time>
-      val commitTimes = commits map (_.commit.author.date)
+      val commitTimes = commits map (_.committer.date)
       (created ++ requests ++ commitTimes) reduce ( (x,y) => if (x > y) x else y )
     }
     
@@ -67,7 +67,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     val builds = jenkinsJobs filter needsRebuilt
 
     def makeCommenter(job: JenkinsJob): ActorRef =
-      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job + "-commenter-" + pull.number)
+      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job.name +"-commenter-"+ pull.number)
     
     // For all remaining verification jobs, spit out a new job.
     for {
