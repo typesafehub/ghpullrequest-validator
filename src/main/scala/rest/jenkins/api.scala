@@ -40,19 +40,20 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
   }
   
   /** A traversable that lazily pulls build status information from jenkins. */
-  def buildStatusForJob(job: JenkinsJob): Traversable[BuildStatus] = 
-    new Traversable[BuildStatus]{
-      override def foreach[U](f: BuildStatus => U): Unit = {
-        val info = jobInfo(job)
-        // println("buildStatusForJob: "+ job.name +" -> "+ info)
-        for {
-          build <- info.builds.sorted.reverse 
-          status = buildStatus(job, build.number)
-        } try f(status) catch {
-          case t: Exception => // Ignore this one.
-        }
-      }
-    }
+  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] =
+    jobInfo(job).builds.sorted.reverse.toStream.map(build => buildStatus(job, build.number))
+    // new Traversable[BuildStatus]{
+    //   override def foreach[U](f: BuildStatus => U): Unit = {
+    //     val info = jobInfo(job)
+    //     // println("buildStatusForJob: "+ job.name +" -> "+ info)
+    //     for {
+    //       build <- info.builds.sorted.reverse
+    //       status = buildStatus(job, build.number)
+    //     } try f(status) catch {
+    //       case t: Exception => // Ignore this one.
+    //     }
+    //   }
+    // }
 }
 
 object API {
