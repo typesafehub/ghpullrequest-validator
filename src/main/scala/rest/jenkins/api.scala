@@ -24,14 +24,14 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
     Http(loc >- parseJsonTo[Job])
   }
   
-  def buildJob(job: JenkinsJob, params: Map[String,String] = Map.empty): Unit = {
+  def buildJob(job: JenkinsJob, params: Map[String,String] = Map.empty): String = {
     val action = 
       if (params.isEmpty) makeReq("%s/build" format ( job.name))
       else {
         val uri = makeReq("job/%s/buildWithParameters" format (job.name))
         uri.POST << params
       }
-    Http(action >|)
+    Http(action >- identity[String])
   }
   
   def buildStatus(job: JenkinsJob, buildNumber: String): BuildStatus = {
@@ -40,18 +40,20 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
   }
   
   /** A traversable that lazily pulls build status information from jenkins. */
-  def buildStatusForJob(job: JenkinsJob): Traversable[BuildStatus] = 
-    new Traversable[BuildStatus]{
-      override def foreach[U](f: BuildStatus => U): Unit = {
-        val info = jobInfo(job)
-        for {
-          build <- info.builds.sorted.reverse 
-          status = buildStatus(job, build.number)
-        } try f(status) catch {
-          case t: Exception => // Ignore this one.
-        }
-      }
-    }
+  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] =
+    jobInfo(job).builds.sorted.reverse.toStream.map(build => buildStatus(job, build.number))
+    // new Traversable[BuildStatus]{
+    //   override def foreach[U](f: BuildStatus => U): Unit = {
+    //     val info = jobInfo(job)
+    //     // println("buildStatusForJob: "+ job.name +" -> "+ info)
+    //     for {
+    //       build <- info.builds.sorted.reverse
+    //       status = buildStatus(job, build.number)
+    //     } try f(status) catch {
+    //       case t: Exception => // Ignore this one.
+    //     }
+    //   }
+    // }
 }
 
 object API {
@@ -61,7 +63,8 @@ object API {
 case class Job(name: String,
                description: String,
                nextBuildNumber: String,
-               builds: List[Build])
+               builds: List[Build],
+               queueItem: Option[QueueItem])
    
 case class Build(number: String, url: String) extends Ordered[Build] {
   def num: Int = number.toInt
@@ -89,3 +92,5 @@ case class BuildStatus(number: String,
   def timestampDate =
     new java.util.Date(timestamp.toLong)
 }
+
+case class QueueItem(buildable: Boolean)
