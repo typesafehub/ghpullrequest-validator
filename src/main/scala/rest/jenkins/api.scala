@@ -44,6 +44,7 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
     new Traversable[BuildStatus]{
       override def foreach[U](f: BuildStatus => U): Unit = {
         val info = jobInfo(job)
+        // println("buildStatusForJob: "+ job.name +" -> "+ info)
         for {
           build <- info.builds.sorted.reverse 
           status = buildStatus(job, build.number)

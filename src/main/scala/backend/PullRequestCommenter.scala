@@ -1,6 +1,6 @@
 package backend
 
-import akka.actor.{ActorRef,Actor, Props}
+import akka.actor.{ActorRef, Actor, Props, ActorLogging}
 import akka.util.duration._
 import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
@@ -10,15 +10,14 @@ import util.control.Exception.catching
  * Note: This only helps the PulLRequestValidator actors and should not be used
  * stand-alone.
  */
-class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, notify: ActorRef) extends Actor {
+class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, notify: ActorRef) extends Actor with ActorLogging {
   def receive: Receive = {
     case BuildStarted(url) =>
-      val comment = 
-        "Started jenkins job %s at %s" format (job.name, url)
-        ghapi.makepullrequestcomment(pull.base.repo.owner.login, 
+      val comment = ghapi.makepullrequestcomment(pull.base.repo.owner.login,
                                      pull.base.repo.name,
                                      pull.number.toString,
-                                     comment)
+                                     "Started jenkins job %s at %s" format (job.name, url))
+      log.debug("Commented job "+ job.name +" started at "+ url +" res: "+ comment)
     case BuildResult(success, url) =>
       val successString = if(success) "Success" else "Failed"
       // make failures easier to spot

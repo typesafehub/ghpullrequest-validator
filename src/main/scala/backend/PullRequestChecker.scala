@@ -1,6 +1,6 @@
 package backend
 
-import akka.actor.{ActorRef,Actor, Props}
+import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import akka.util.duration._
 import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
@@ -17,7 +17,7 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: JenkinsJob)
  * Note: Any job sent to this actor must support one and only one build parameter,
  * "pullrequest"
  */
-class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor {
+class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor with ActorLogging{
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
   // cache of currently validating pull requests so we don't duplicate effort....
@@ -56,7 +56,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       // TODO - Check commit times, so we rebuild on new commits.
       // val newCommits = <search commits for last updated time>
       val commitTimes = commits map (_.committer.date)
-      (created ++ requests ++ commitTimes) reduce ( (x,y) => if (x > y) x else y )
+      (created ++ requests ++ commitTimes).max
     }
     
     def needsRebuilt(job: JenkinsJob): Boolean =
@@ -70,10 +70,8 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job.name +"-commenter-"+ pull.number)
     
     // For all remaining verification jobs, spit out a new job.
-    for {
-      job <- (builds).toSeq.sorted
-      if !active(hash(pull, job))
-    } {
+    builds.toSeq.sorted.filterNot(job => active(hash(pull, job))).foreach { job =>
+      log.debug("BuildProject: "+ (pull.number, job))
       active += hash(pull,job)
       jobBuilder ! BuildProject(job, 
                                 Map("pullrequest" -> pull.number.toString,
