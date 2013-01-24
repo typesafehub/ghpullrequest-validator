@@ -43,7 +43,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     def lastJobDoneTime(job: JenkinsJob): Option[String] = (
         for {
           comment <- comments
-          if comment.body startsWith ("jenkins job " + job)
+          if comment.body startsWith ("jenkins job " + job.name)
         } yield comment.created_at
       ).lastOption 
     
@@ -60,9 +60,14 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     }
     
     def needsRebuilt(job: JenkinsJob): Boolean =
-      (lastJobDoneTime(job) 
-          map (_ < lastJobRequestTime(job)) 
-          getOrElse true)
+      lastJobDoneTime(job) match {
+        case Some(lastDone) if lastJobRequestTime(job) < lastDone =>
+          log.debug("no need to rebuild "+ job.name +" for #"+ pull.number)
+          false
+        case done =>
+          log.debug("need to rebuild "+ job.name +" for #"+ pull.number +""+ (done, lastJobRequestTime(job)))
+          true
+      }
           
     val builds = jenkinsJobs filter needsRebuilt
 
