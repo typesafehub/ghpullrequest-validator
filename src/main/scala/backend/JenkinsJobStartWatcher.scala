@@ -71,7 +71,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
     import rest.jenkins.Param
     val buildStati = api.buildStatusForJob(b.job)
     val jobsForThisPR = buildStati.filter { status =>
-      status.actions.parameters.map{case Param(n, v) => (n, v)}.toMap == b.args
+      status.actions.parameters.collect{case Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
     }
 
     jobsForThisPR.headOption match {
