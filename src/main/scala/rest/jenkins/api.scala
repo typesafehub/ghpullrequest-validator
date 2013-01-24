@@ -24,14 +24,14 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
     Http(loc >- parseJsonTo[Job])
   }
   
-  def buildJob(job: JenkinsJob, params: Map[String,String] = Map.empty): Unit = {
+  def buildJob(job: JenkinsJob, params: Map[String,String] = Map.empty): String = {
     val action = 
       if (params.isEmpty) makeReq("%s/build" format ( job.name))
       else {
         val uri = makeReq("job/%s/buildWithParameters" format (job.name))
         uri.POST << params
       }
-    Http(action >|)
+    Http(action >- identity[String])
   }
   
   def buildStatus(job: JenkinsJob, buildNumber: String): BuildStatus = {
@@ -63,7 +63,8 @@ object API {
 case class Job(name: String,
                description: String,
                nextBuildNumber: String,
-               builds: List[Build])
+               builds: List[Build],
+               queueItem: Option[QueueItem])
    
 case class Build(number: String, url: String) extends Ordered[Build] {
   def num: Int = number.toInt
@@ -91,3 +92,5 @@ case class BuildStatus(number: String,
   def timestampDate =
     new java.util.Date(timestamp.toLong)
 }
+
+case class QueueItem(buildable: Boolean)
