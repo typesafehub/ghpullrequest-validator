@@ -30,8 +30,10 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
         case Some((number, status)) =>
           // Create a "done" watcher and let him go to town on the specific build.
           // Pass the props to our parent so he "owns" the watcher when we die.
-          b.watcher ! BuildStarted(status.url)
-          jenkinsService ! JobStarted(b, status)
+          if (status.building) {
+            b.watcher ! BuildStarted(status.url)
+            jenkinsService ! JobStarted(b, status)
+          }
           context stop self
         case None        =>
           // Could not find the build yet, let's look again soon.
@@ -54,9 +56,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
   // and all the variables line up.
   private final def findBuild =
     api.buildStatusForJob(b.job).find { status =>
-      val newer = (status.timestampDate compareTo myTime) >= 0 // Make sure this is a new build.
+      // Filter out older (stale) builds
+      val newer = (status.timestampDate compareTo myTime) >= 0
       val same  = isSame(status.actions.parameters, b.args)
-      log.debug("findBuild "+ (status, myTime, newer, same))
+      if (newer && same) log.debug("foundBuild "+ (b.job, status))
+      else log.debug("didn't find current build "+ (b.job, myTime, status))
       newer && same
     }.map(status => status.number -> status)
 }
