@@ -1,6 +1,6 @@
 package backend
 
-import akka.actor.{Actor,ActorRef, ActorSystem,Props,ReceiveTimeout}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props, ActorLogging, ReceiveTimeout}
 import rest.jenkins.{API => JenkinsAPI}
 import akka.util.duration._
 
@@ -10,48 +10,75 @@ import akka.util.duration._
  * notifies the jenkinsService that the job has started.
  */
 // TODO - We need a new way to detect a job has started...
-class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: ActorRef) extends Actor {
+class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: ActorRef) extends Actor with ActorLogging {
   // TODO - Use better time library....
-  
-  // 1. capture the latest buld time, or just the beginning of time if we have none.
-  // 2. start the job on jenkins
-  // 3. Set timeout to check when the job has started.
-  val myTime = 
-    (api.buildStatusForJob(b.job).view.headOption
-     map (_.timestampDate)
-     getOrElse new java.util.Date(0))
-  api.buildJob(b.job, b.args)
+
+  // start the job on jenkins
+  val buildJobResult = api.buildJob(b.job, b.args)
+  log.debug("Started job "+ b.job.name +"args: "+ b.args +" --> "+ buildJobResult)
+
+  // Set timeout to check when the job has started.
   context setReceiveTimeout (30 seconds)
-  
+
+  private[this] var retryCount = 0
+  private val MAX_RETRIES = 10
+  def canRetry =
+    api.jobInfo(b.job).queueItem match {
+      // there's a queue, be patient as jenkins doesn't tell us about queued jobs
+      case Some(rest.jenkins.QueueItem(true)) =>
+        log.debug("Retrying because there's a queue "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
+        true
+      // no queue, if don't start finding it by now, something went wrong
+      case _ =>
+        log.debug("Retrying -- no queue "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
+        retryCount += 1
+        retryCount < MAX_RETRIES
+    }
+
   def receive: Receive = {
-    case ReceiveTimeout => 
+    case _ if canRetry =>
       findBuild match {
-        case Some((number, status)) =>
+        case Some(status) =>
           // Create a "done" watcher and let him go to town on the specific build.
           // Pass the props to our parent so he "owns" the watcher when we die.
+          b.watcher ! BuildStarted(status.url)
           jenkinsService ! JobStarted(b, status)
           context stop self
         case None        =>
           // Could not find the build yet, let's look again soon.
           context setReceiveTimeout (1 minutes)
       }
+    case _ =>
+      log.debug("timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
+      jenkinsService ! b // tell the service to rebuild
+      context stop self // stop looking for the job to start
   }
-  // TODO - Look into adding UUID to build parameters....
-  private final def isSame(params: List[rest.jenkins.Param], args: Map[String,String]): Boolean = {
-    val allsame = (for {
-      param <- params
-      other <- args get param.name
-    } yield other == param.value) forall identity
-    // TODO - does this handle defaults?
-    allsame //&& params.size == args.size
-  }
+
+  // // TODO - Look into adding UUID to build parameters....
+  // private final def isSame(params: List[rest.jenkins.Param], args: Map[String,String]): Boolean = {
+  //   val allsame = (for {
+  //     param <- params
+  //     other <- args get param.name
+  //   } yield other == param.value) forall identity
+  //   // TODO - does this handle defaults?
+  //   // log.debug("isSame: "+(params, args, allsame))
+  //   allsame //&& params.size == args.size
+  // }
   
-  // Finds our build, making sure timestamp is after we started the build,
-  // and all the variables line up.
-  private final def findBuild =
-    (for {
-        // Make sure this is a new build.
-        status <- api.buildStatusForJob(b.job).view takeWhile (_.timestampDate after myTime)
-        if isSame(status.actions.parameters, b.args)
-     } yield status.number -> status) headOption
+  // Finds most recent build for this PR & merge branch
+  // we can't be sure it's us who started the build, so just assume the most recent build was us
+  def findBuild = {
+    import rest.jenkins.Param
+    val buildStati = api.buildStatusForJob(b.job)
+    val jobsForThisPR = buildStati.filter { status =>
+      status.actions.parameters.collect{case Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
+    }
+
+    jobsForThisPR.headOption match {
+      case res@Some(status) => log.debug("foundBuild "+ (b.job, b.args.get("pullrequest"), status))
+        res
+      case _ => log.debug("didn't find current build "+ (b.job, b.args.get("pullrequest"), jobsForThisPR))
+        None
+    }
+  }
 }

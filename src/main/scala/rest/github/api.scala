@@ -168,20 +168,13 @@ case class GitRef(
 }
 
 case class CommitInfo(
+  url: String,
   sha: String,
-  url: String,
-  author: User,
-  committer: User, 
-  commit: Commit,
-  parents: List[CommitRef]
-)
-
-case class Commit(
-  url: String,
   message: String,
-  tree: CommitRef,
+  committer: CommitAuthor,
   author: CommitAuthor,
-  committer: CommitAuthor  
+  parents: List[CommitRef],
+  tree: CommitRef
 )
 
 case class CommitRef(
@@ -189,9 +182,9 @@ case class CommitRef(
   url: String)
 
 case class CommitAuthor(
+  email: String,
   name: String,
-  date: String,
-  email: String
+  date: String
 )
 
 case class Comment(

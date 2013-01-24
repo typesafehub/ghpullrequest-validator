@@ -1,6 +1,6 @@
 package backend
 
-import akka.actor.{ActorRef,Actor, Props}
+import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import akka.util.duration._
 import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
@@ -17,7 +17,7 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: JenkinsJob)
  * Note: Any job sent to this actor must support one and only one build parameter,
  * "pullrequest"
  */
-class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor {
+class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor with ActorLogging{
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
   // cache of currently validating pull requests so we don't duplicate effort....
@@ -43,7 +43,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     def lastJobDoneTime(job: JenkinsJob): Option[String] = (
         for {
           comment <- comments
-          if comment.body startsWith ("jenkins job " + job)
+          if comment.body startsWith ("jenkins job " + job.name)
         } yield comment.created_at
       ).lastOption 
     
@@ -55,25 +55,28 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       } yield comment.created_at
       // TODO - Check commit times, so we rebuild on new commits.
       // val newCommits = <search commits for last updated time>
-      val commitTimes = commits map (_.commit.author.date)
-      (created ++ requests ++ commitTimes) reduce ( (x,y) => if (x > y) x else y )
+      val commitTimes = commits map (_.committer.date)
+      (created ++ requests ++ commitTimes).max
     }
     
     def needsRebuilt(job: JenkinsJob): Boolean =
-      (lastJobDoneTime(job) 
-          map (_ < lastJobRequestTime(job)) 
-          getOrElse true)
+      lastJobDoneTime(job) match {
+        case Some(lastDone) if lastJobRequestTime(job) < lastDone =>
+          log.debug("no need to rebuild "+ job.name +" for #"+ pull.number)
+          false
+        case done =>
+          log.debug("must rebuild "+ job.name +" for #"+ pull.number +""+ (done, lastJobRequestTime(job)))
+          true
+      }
           
     val builds = jenkinsJobs filter needsRebuilt
 
     def makeCommenter(job: JenkinsJob): ActorRef =
-      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job + "-commenter-" + pull.number)
+      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job.name +"-commenter-"+ pull.number)
     
     // For all remaining verification jobs, spit out a new job.
-    for {
-      job <- (builds).toSeq.sorted
-      if !active(hash(pull, job))
-    } {
+    builds.toSeq.sorted.filterNot(job => active(hash(pull, job))).foreach { job =>
+      log.debug("BuildProject #"+ pull.number +" job: "+ job)
       active += hash(pull,job)
       jobBuilder ! BuildProject(job, 
                                 Map("pullrequest" -> pull.number.toString,
