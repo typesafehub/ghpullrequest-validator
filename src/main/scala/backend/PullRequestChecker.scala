@@ -65,7 +65,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
           log.debug("no need to rebuild "+ job.name +" for #"+ pull.number)
           false
         case done =>
-          log.debug("need to rebuild "+ job.name +" for #"+ pull.number +""+ (done, lastJobRequestTime(job)))
+          log.debug("must rebuild "+ job.name +" for #"+ pull.number +""+ (done, lastJobRequestTime(job)))
           true
       }
           
@@ -76,7 +76,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     
     // For all remaining verification jobs, spit out a new job.
     builds.toSeq.sorted.filterNot(job => active(hash(pull, job))).foreach { job =>
-      log.debug("BuildProject: "+ (pull.number, job))
+      log.debug("BuildProject #"+ pull.number +" job: "+ job)
       active += hash(pull,job)
       jobBuilder ! BuildProject(job, 
                                 Map("pullrequest" -> pull.number.toString,
