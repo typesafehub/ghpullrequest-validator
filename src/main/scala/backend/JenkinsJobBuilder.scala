@@ -23,8 +23,7 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor with ActorLogging {
     case build: BuildProject => 
       val me = self
       log.debug("Starting job watcher for: " +build.job.name)
-      val startWatcher = context actorOf Props(new JenkinsJobStartWatcher(api, build, me))
-      startWatcher ! "DUMMY MESSAGE TO GET THINGS GOING" // is this necessary?
+      context actorOf Props(new JenkinsJobStartWatcher(api, build, me))
 
     case JobStarted(build, status) =>
       log.debug("Job started: " + build.job.name + "-" + status.number)
