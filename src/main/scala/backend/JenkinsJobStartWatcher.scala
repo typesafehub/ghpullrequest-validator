@@ -31,12 +31,13 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
       // no queue, if don't start finding it by now, something went wrong
       case _ =>
         log.debug("Retrying -- no queue "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
-        retryCount += 1
         retryCount < MAX_RETRIES
     }
 
   def receive: Receive = {
-    case _ if canRetry =>
+    case ReceiveTimeout if canRetry =>
+      retryCount += 1
+
       findBuild match {
         case Some(status) =>
           // Create a "done" watcher and let him go to town on the specific build.
