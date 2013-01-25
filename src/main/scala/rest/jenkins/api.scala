@@ -40,8 +40,29 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
   }
   
   /** A traversable that lazily pulls build status information from jenkins. */
-  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] =
-    jobInfo(job).builds.sorted.reverse.toStream.map(build => buildStatus(job, build.number))
+  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = {
+    val info = jobInfo(job)
+    val reportedBuilds = info.builds.sorted
+
+    // work around https://issues.jenkins-ci.org/browse/JENKINS-15583 -- jenkins not reporting all running builds
+    // so hack it by closing the range from the last reported build to the lastBuild in the Json response, which is correct
+    // only the builds part of the reply is wrong
+    val allBuilds =
+      if (reportedBuilds.isEmpty) reportedBuilds
+      else {
+        val additionalBuilds = try {
+            (reportedBuilds.last.number.toInt to info.lastBuild.number.toInt) map { number =>
+              Build(number.toString, jenkinsUrl +"/job/"+ job.name +"/"+ number +"/")
+            }
+          } catch {
+            case x: Exception =>
+              List[Build]()
+          }
+        (reportedBuilds ++ additionalBuilds)
+      }
+
+    allBuilds.reverse.toStream.map(build => buildStatus(job, build.number))
+  }
     // new Traversable[BuildStatus]{
     //   override def foreach[U](f: BuildStatus => U): Unit = {
     //     val info = jobInfo(job)
@@ -64,7 +85,8 @@ case class Job(name: String,
                description: String,
                nextBuildNumber: String,
                builds: List[Build],
-               queueItem: Option[QueueItem])
+               queueItem: Option[QueueItem],
+               lastBuild: Build)
    
 case class Build(number: String, url: String) extends Ordered[Build] {
   def num: Int = number.toInt
