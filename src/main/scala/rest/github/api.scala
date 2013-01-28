@@ -66,9 +66,9 @@ trait API {
     Http(action)
   }
 
-  def pullrequestcommits(user: String, repo: String, number: String): List[CommitInfo] = {
+  def pullrequestcommits(user: String, repo: String, number: String): List[PRCommit] = {
     val url = makeAPIurl("/repos/%s/%s/pulls/%s/commits?per_page=100" format (user,repo,number))
-    val action = url >- parseJsonTo[List[CommitInfo]]
+    val action = url >- parseJsonTo[List[PRCommit]]
     Http(action)
   }
 
@@ -167,19 +167,16 @@ case class GitRef(
   def sha10 = sha take 10
 }
 
-case class CommitInfo(
+case class PRCommit(
   url: String,
-  sha: String,
-  message: String,
-  committer: CommitAuthor,
-  author: CommitAuthor,
-  parents: List[CommitRef],
-  tree: CommitRef
+  commit: CommitInfo
 )
 
-case class CommitRef(
-  sha: String,
-  url: String)
+case class CommitInfo(
+  committer: CommitAuthor,
+  author: CommitAuthor,
+  message: String
+)
 
 case class CommitAuthor(
   email: String,
