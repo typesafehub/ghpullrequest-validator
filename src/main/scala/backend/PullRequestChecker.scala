@@ -55,7 +55,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       } yield comment.created_at
       // TODO - Check commit times, so we rebuild on new commits.
       // val newCommits = <search commits for last updated time>
-      val commitTimes = commits map (_.committer.date)
+      val commitTimes = commits map (_.commit.committer.date)
       (created ++ requests ++ commitTimes).max
     }
     
