@@ -10,7 +10,7 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildProject, buildnumber: Strin
   log.debug("Watching for job finish: " + buildnumber)
   private var _backoff = 1
   def backoff: Int =
-    if (_backoff > 16) 10
+    if (_backoff >= 8) 8
     else {
       val res = _backoff
       _backoff *= 2
@@ -24,7 +24,7 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildProject, buildnumber: Strin
       if (status.building) context setReceiveTimeout (backoff minutes)
       else {
         log.debug("Job finished! " + build.job.name)
-        build.watcher ! BuildResult(status.isSuccess, status.url)
+        build.commenter ! BuildResult(status.isSuccess, status.url)
         context stop self
       }
   }
