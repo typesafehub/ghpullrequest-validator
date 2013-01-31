@@ -13,11 +13,21 @@ import util.control.Exception.catching
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, notify: ActorRef) extends Actor with ActorLogging {
   def receive: Receive = {
     case BuildStarted(url) =>
-      val comment = ghapi.makepullrequestcomment(pull.base.repo.owner.login,
-                                     pull.base.repo.name,
-                                     pull.number.toString,
-                                     "Started jenkins job %s at %s" format (job.name, url))
-      log.debug("Commented job "+ job.name +" started at "+ url +" res: "+ comment)
+      // add job started comment if we hadn't already
+      val message  = "Started jenkins job %s at %s" format (job.name, url)
+      val comments = ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
+      if (comments.exists(_.body == message)) log.debug("DOUBLE RAINBOW^W start comment! "+ message)
+      else {
+        comments.filter(_.body.startsWith("Started jenkins job "+ job.name)) match {
+          case Nil =>
+          case otherStarts => log.debug("other start comments exist! "+ otherStarts)
+        }
+        val comment  = ghapi.makepullrequestcomment(pull.base.repo.owner.login,
+                                       pull.base.repo.name,
+                                       pull.number.toString,
+                                       message)
+        log.debug("Commented job "+ job.name +" started at "+ url +" res: "+ comment)
+      }
     case BuildResult(success, url) =>
       val successString = if(success) "Success" else "Failed"
       // make failures easier to spot
