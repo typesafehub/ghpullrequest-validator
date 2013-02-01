@@ -4,7 +4,8 @@ package github
 import dispatch._
 
 object Authenticate {
-  private[this] val authorizations = :/("api.github.com").secure / "authorizations"
+  val USER_AGENT = "github.com/typesafehub/ghpullrequest-validator; thanks for breaking me again, github"
+  private[this] val authorizations = :/("api.github.com").secure / "authorizations" <:< Map("User-Agent" -> USER_AGENT)
 
   val authScopes = """{
  "scopes": [ 
@@ -42,7 +43,11 @@ object Authenticate {
 
 
 trait API {
-  private def makeAPIurl(uri: String) = url("https://api.github.com" + uri) <:< Map("Authorization" -> "token %s".format(token))
+  import Authenticate.USER_AGENT
+
+  private def makeAPIurl(uri: String) = url("https://api.github.com" + uri) <:< Map(
+      "Authorization" -> "token %s".format(token),
+      "User-Agent" -> USER_AGENT)
 
   val token: String
 
