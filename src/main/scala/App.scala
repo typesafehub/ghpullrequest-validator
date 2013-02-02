@@ -20,12 +20,15 @@ object GhApp extends scala.App {
     System exit 1
   }
   
-  // Load configuration to start system.
+  // Load configuration
   for((name, c) <- configs) {
     log.debug("Adding config for: " + name)
     system addConfig c
   }
   
+  // start checking projects' pull requests every 15 minutes
+  system startChecking 15
+
   // Pull either the specified configuration files, or nothing.  
   def configFiles: Seq[java.io.File] = 
     if(args.isEmpty) Seq(new java.io.File("ghpr.conf"))
