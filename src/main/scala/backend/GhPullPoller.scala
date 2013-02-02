@@ -11,7 +11,7 @@ import util.control.Exception.catching
  */
 class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor {
   
-  // Create the listener of pull request checks as a nested actor so it's failures
+  // Create the listener of pull request checks as a nested actor so its failures
   // get reported to us.
   // TODO - better way of disassociating these two...
   // Perhaps an actor that just grabs pull requests and sends messages for them...

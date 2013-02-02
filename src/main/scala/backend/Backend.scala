@@ -15,13 +15,13 @@ object Backend {
    * comments appropriately on the given project which jenkins jobs successfully passed.
    */
   def apply(ghapi: GithubAPI, japi: JenkinsAPI, system: ActorRefFactory): Backend = new Backend {
-    private val backendSystem = {
+    private val pullPoller = {
       val jobBuilder = Props(new JenkinsJobBuilder(japi))
-      val prchecker = Props(new PullRequestChecker(ghapi, jobBuilder))
+      val prchecker  = Props(new PullRequestChecker(ghapi, jobBuilder))
       system.actorOf(Props(new GhPullPoller(ghapi, prchecker)))
     }
     def checkPullRequestsOnSystem(ghuser: String, ghproject: String, jobs: Set[JenkinsJob]): Unit =
-      backendSystem ! CheckPullRequests(ghuser, ghproject, jobs)
+      pullPoller ! CheckPullRequests(ghuser, ghproject, jobs)
   }
 
 }
