@@ -14,15 +14,22 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
   val SPURIOUS_REBUILD = "SPURIOUS ABORT? -- PLS REBUILD "
 
   def needsAttention() = {
-    if (ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name).contains("tested"))
+    val currLabelNames = ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name)
+
+    if (currLabelNames.contains("tested"))
       ghapi.deleteLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, "tested")
 
-    ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("needs-attention"))
+    if (!currLabelNames.contains("needs-attention"))
+      ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("needs-attention"))
   }
 
   // TODO: only when all jobs have completed
-  def success() =
-    ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("tested"))
+  def success() = {
+    val currLabelNames = ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name)
+
+    if (!currLabelNames.contains("tested"))
+      ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("tested"))
+  }
 
   def receive: Receive = {
     case BuildStarted(url) =>
