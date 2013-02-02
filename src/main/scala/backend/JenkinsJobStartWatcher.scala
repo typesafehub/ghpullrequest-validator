@@ -48,9 +48,16 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
         // try to start the job on jenkins once
         startDate match {
           case None =>
+            // we haven't started our own build yet, but maybe an older one is running
+            // watch its result, but still start our own
+            ourJobs.filter(_.building).foreach { status =>
+              log.debug("found previously running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
+              jenkinsService ! JobStarted(b, status)
+            }
+
             startDate = Some(System.currentTimeMillis)
             api.buildJob(b.job, b.args)
-            log.debug("Started job "+ b.job.name +"args: "+ b.args)
+            log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
           case Some(start) =>
             retryCount += 1
             findBuild match {
@@ -89,19 +96,20 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
   //   allsame //&& params.size == args.size
   // }
   
+  def ourJobs =
+    api.buildStatusForJob(b.job).filter { status =>
+      status.actions.parameters.collect{case rest.jenkins.Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
+    }
+
+
   // Finds most recent build for this PR & merge branch
   // we can't be sure it's us who started the build, so just assume the most recent build was us
   def findBuild = {
-    import rest.jenkins.Param
-    val buildStati = api.buildStatusForJob(b.job)
-    val jobsForThisPR = buildStati.filter { status =>
-      status.actions.parameters.collect{case Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
-    }
-
-    jobsForThisPR.headOption match {
+    val activeJobs = ourJobs.filter(_.building)
+    activeJobs.headOption match {
       case res@Some(status) => log.debug("foundBuild "+ (b.job, b.args.get("pullrequest"), status))
         res
-      case _ => log.debug("didn't find current build "+ (b.job, b.args.get("pullrequest"), jobsForThisPR))
+      case _ => log.debug("didn't find current build "+ (b.job, b.args.get("pullrequest"), activeJobs))
         None
     }
   }

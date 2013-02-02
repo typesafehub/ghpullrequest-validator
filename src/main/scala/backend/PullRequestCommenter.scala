@@ -70,7 +70,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             needsAttention()
 
             import dispatch._
-
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
             val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
