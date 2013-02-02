@@ -50,7 +50,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
             (baseComment + sadKitty +"\n"+
-              (if (log.contains("test.suite")) {
+              (if (log.exists(_.contains("test.suite"))) {
                 log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
               } else {
                 failureLog.takeWhile(! _.startsWith("Total time: "))
