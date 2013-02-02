@@ -11,6 +11,8 @@ import util.control.Exception.catching
  * stand-alone.
  */
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, notify: ActorRef) extends Actor with ActorLogging {
+  val SPURIOUS_REBUILD = "SPURIOUS ABORT? -- PLS REBUILD "
+
   def receive: Receive = {
     case BuildStarted(url) =>
       // add job started comment if we hadn't already
@@ -28,11 +30,43 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
                                        message)
         log.debug("Commented job "+ job.name +" started at "+ url +" res: "+ comment)
       }
-    case BuildResult(success, url) =>
-      val successString = if(success) "Success" else "Failed"
+    case BuildResult(status) =>
+      val baseComment = "jenkins job %s: %s - %s" format (job.name, status.result, status.url)
       // make failures easier to spot
-      val sadKitty      = if(success) "" else " <br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
-      val comment       = "jenkins job %s: %s - %s%s" format (job.name, successString, url, sadKitty)
+      val sadKitty = "\n![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
+
+      def cleanPartestLine(line: String) = ("  - " + {
+        try { line.split("/files/")(1).split("\\[FAILED\\]").head.trim }
+        catch {
+          case _: Exception => line
+        }})
+
+      val comment =
+        status.result match {
+          case "FAILURE" =>
+            import dispatch._
+
+            val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
+            val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
+
+            (baseComment + sadKitty +"\n"+
+              (if (log.contains("test.suite")) {
+                log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
+              } else {
+                failureLog.takeWhile(! _.startsWith("Total time: "))
+              }).mkString("\n"))
+
+          case "ABORTED" =>
+            // if aborted and not rebuilt before, try rebuilding
+            val comments = ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
+            baseComment + sadKitty +"\n"+ (
+              if (comments.exists(_.body.contains(SPURIOUS_REBUILD))) "tried automatically rebuilding once before, not falling for it again!"
+              else SPURIOUS_REBUILD + job.name
+            )
+
+          case _ => baseComment
+        }
+
       ghapi.makepullrequestcomment(pull.base.repo.owner.login, 
                                    pull.base.repo.name,
                                    pull.number.toString,

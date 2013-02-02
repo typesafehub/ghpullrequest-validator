@@ -219,5 +219,9 @@ object PullRequestStatus {
 
 
 case class IssueComment(body: String) {
-  def toJson = """{ "body": "%s" }""".stripMargin format (body.replaceAll("\"", "\\\""))
+  // import net.liftweb.json._
+  // import JsonAST._
+  // import Printer._
+
+  def toJson = makeJson(this) //pretty(render(JObject(List(JField("body", JString(body))))))
 }

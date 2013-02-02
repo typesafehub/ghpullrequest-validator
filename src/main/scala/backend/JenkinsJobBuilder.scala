@@ -8,7 +8,7 @@ import rest.jenkins.BuildStatus
 // External Messages
 case class BuildProject(job: JenkinsJob, args: Map[String,String], commenter: ActorRef)
 case class BuildStarted(url: String)
-case class BuildResult(success: Boolean, url: String)
+case class BuildResult(status: BuildStatus)
 
 
 // Internal messages
