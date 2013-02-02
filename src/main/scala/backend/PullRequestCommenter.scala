@@ -70,7 +70,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             needsAttention()
 
             import dispatch._
-
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
             val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
@@ -92,7 +91,13 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             )
           case "SUCCESS" =>
             success()
-            baseComment
+            // get the commit hash so we can verify what the job's claiming success for exactly
+            import dispatch._
+            val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
+            val header = consoleOutput.lines.take(100).toList
+            val (_, desc) = header.span(! _.startsWith("+ git describe "))
+
+            baseComment + desc.take(2).mkString("\n", "\n", "")
           case _ =>
             baseComment
         }

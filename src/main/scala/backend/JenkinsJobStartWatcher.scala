@@ -35,34 +35,48 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
         if (retryCount < MAX_RETRIES) JRetry else JStop
     }
 
-  private[this] var triedStart = false
+  // a after b or within 2 minutes (to account for clock skew)
+  private def closeEnough(a: Long, b: Long) =
+    a >= b || (b - a)/1000 <= 120
+
+  private[this] var startDate: Option[Long] = None
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
       case JQueue =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
       case JRetry =>
-        retryCount += 1
-
-        findBuild match {
-          case Some(status) =>
-            // it was us
-            if (triedStart) b.commenter ! BuildStarted(status.url)
-
-            // Create a "done" watcher and let him go to town on the specific build.
-            // Pass the props to our parent so he "owns" the watcher when we die.
-            jenkinsService ! JobStarted(b, status)
-            context stop self
-          case None        =>
-            // no job found
-            // try to start the job on jenkins once
-            if (!triedStart) {
-              triedStart = true
-              api.buildJob(b.job, b.args)
-              log.debug("Started job "+ b.job.name +"args: "+ b.args)
+        // try to start the job on jenkins once
+        startDate match {
+          case None =>
+            // we haven't started our own build yet, but maybe an older one is running
+            // watch its result, but still start our own
+            ourJobs.filter(_.building).foreach { status =>
+              log.debug("found previously running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
+              jenkinsService ! JobStarted(b, status)
             }
-            // start looking for it to appear
-            context setReceiveTimeout (1 minutes)
-        }
+
+            startDate = Some(System.currentTimeMillis)
+            api.buildJob(b.job, b.args)
+            log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
+          case Some(start) =>
+            retryCount += 1
+            findBuild match {
+              // TODO: make sure it's the build we triggered by adding a UID to the build params
+              // for now, assume all builds started close to when we tried starting our job are ours
+              case Some(status) if closeEnough(status.timestamp.toLong, start) =>
+                b.commenter ! BuildStarted(status.url)
+
+                // Create a "done" watcher and let him go to town on the specific build.
+                // Pass the props to our parent so he "owns" the watcher when we die.
+                jenkinsService ! JobStarted(b, status)
+                context stop self
+              case s =>
+                if (s.nonEmpty) log.debug("found build but not ours? "+ (b.job, "#"+b.args.get("pullrequest"), s.get))
+                // no running job found
+                // start looking for it to appear
+                context setReceiveTimeout (1 minutes)
+            }
+          }
 
       case JStop =>
         log.debug("timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
@@ -82,19 +96,20 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
   //   allsame //&& params.size == args.size
   // }
   
+  def ourJobs =
+    api.buildStatusForJob(b.job).filter { status =>
+      status.actions.parameters.collect{case rest.jenkins.Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
+    }
+
+
   // Finds most recent build for this PR & merge branch
   // we can't be sure it's us who started the build, so just assume the most recent build was us
   def findBuild = {
-    import rest.jenkins.Param
-    val buildStati = api.buildStatusForJob(b.job)
-    val jobsForThisPR = buildStati.filter { status =>
-      status.actions.parameters.collect{case Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
-    }
-
-    jobsForThisPR.headOption match {
+    val activeJobs = ourJobs.filter(_.building)
+    activeJobs.headOption match {
       case res@Some(status) => log.debug("foundBuild "+ (b.job, b.args.get("pullrequest"), status))
         res
-      case _ => log.debug("didn't find current build "+ (b.job, b.args.get("pullrequest"), jobsForThisPR))
+      case _ => log.debug("didn't find current build "+ (b.job, b.args.get("pullrequest"), activeJobs))
         None
     }
   }
