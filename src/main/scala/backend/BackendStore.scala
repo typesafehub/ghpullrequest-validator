@@ -14,13 +14,18 @@ trait BackendStore {
    * pull requests for a given project.
    */
   def addConfig(config: Config): Future[Seq[Config]]
+
   /** Returns all the configurations used in this backend. */
   def configs: Future[Seq[Config]]
+
   /** Removes a configuration from the list of configs. 
    * returns the new list of configurations.
    */
   def deleteConfig(config: Config): Future[Seq[Config]]
   // TODO - Save and restore?
+
+  /** Start checking PRs in all projects every `periodMinutes` minutes */
+  def startChecking(periodMinutes: Int): Unit
 }
 object BackendStore {
   def apply(system: ActorSystem): BackendStore = new BackendStore {
@@ -34,18 +39,21 @@ object BackendStore {
     
     def deleteConfig(config: Config): Future[Seq[Config]] =
       ask(backendStore, DeleteConfig(config))(1 minutes).mapTo[Seq[Config]]
+
+    def startChecking(periodMinutes: Int): Unit = backendStore ! CheckAllProjects(periodMinutes)
   }
 }
 
 
-case object CheckAllProjects
+case class CheckAllProjects(periodMins: Int)
 case object GetCurrentConfigs
 case class DeleteConfig(config: Config)
 
 class BackendStoreActor extends Actor {
-  context.system.scheduler.scheduleOnce(1 second, self, CheckAllProjects)
   final def receive: Receive = {
-    case CheckAllProjects   => checkAllProjects()
+    case CheckAllProjects(period)   =>
+      checkAllProjects()
+      context.system.scheduler.scheduleOnce(period minutes, self, CheckAllProjects(period))
     case GetCurrentConfigs  => sendConfigsResponse()
     case c: Config          => 
       updateOrAddConfig(c)
@@ -78,20 +86,17 @@ class BackendStoreActor extends Actor {
       backend
     })
     
-  private final def updateOrAddConfig(c: Config): Unit = {
+  private final def updateOrAddConfig(c: Config): Unit =
     configs get hashConfig(c) match {
       case Some(c2) if c == c2 =>  
       case _                   => configs = configs.updated(hashConfig(c), c)
     }
-    self ! CheckAllProjects
-  }
-  
+
   final def checkAllProjects(): Unit = {
     for {
       config <- configs.valuesIterator
       backend = backendFor(config)
     } backend.checkPullRequestsOnSystem(config.project.user, config.project.project, config.jenkinsJobs)
-    context.system.scheduler.scheduleOnce(55 minutes, self, CheckAllProjects)
   }
 }
 
