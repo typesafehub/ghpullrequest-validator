@@ -13,6 +13,17 @@ import util.control.Exception.catching
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, notify: ActorRef) extends Actor with ActorLogging {
   val SPURIOUS_REBUILD = "SPURIOUS ABORT? -- PLS REBUILD "
 
+  def needsAttention() = {
+    if (ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name).contains("tested"))
+      ghapi.deleteLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, "tested")
+
+    ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("needs-attention"))
+  }
+
+  // TODO: only when all jobs have completed
+  def success() =
+    ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("tested"))
+
   def receive: Receive = {
     case BuildStarted(url) =>
       // add job started comment if we hadn't already
@@ -30,6 +41,11 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
                                        message)
         log.debug("Commented job "+ job.name +" started at "+ url +" res: "+ comment)
       }
+
+      // purposefully only at start of line to avoid conditional LGTMs
+      if (comments.exists(_.body.startsWith("LGTM")))
+        ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("reviewed")) // TODO: remove when it disappears
+
     case BuildResult(status) =>
       val baseComment = "jenkins job %s: %s - %s" format (job.name, status.result, status.url)
       // make failures easier to spot
@@ -44,27 +60,34 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       val comment =
         status.result match {
           case "FAILURE" =>
+            needsAttention()
+
             import dispatch._
 
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
             val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
-            (baseComment + sadKitty +"\n"+
-              (if (log.exists(_.contains("test.suite"))) {
-                log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
+            (baseComment + sadKitty +"\n"+(
+              if (log.exists(_.contains("test.suite"))) {
+                log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList.mkString("\nFailed tests:", "\n", "")
               } else {
-                failureLog.takeWhile(! _.startsWith("Total time: "))
-              }).mkString("\n"))
+                failureLog.takeWhile(! _.startsWith("Total time: ")).mkString("\n")
+              }))
 
           case "ABORTED" =>
+            needsAttention()
+
             // if aborted and not rebuilt before, try rebuilding
             val comments = ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
             baseComment + sadKitty +"\n"+ (
               if (comments.exists(_.body.contains(SPURIOUS_REBUILD))) "tried automatically rebuilding once before, not falling for it again!"
               else SPURIOUS_REBUILD + job.name
             )
-
-          case _ => baseComment
+          case "SUCCESS" =>
+            success()
+            baseComment
+          case _ =>
+            baseComment
         }
 
       ghapi.makepullrequestcomment(pull.base.repo.owner.login, 

@@ -58,6 +58,7 @@ trait API {
     val action = url >- parseJsonTo[List[PullMini]]
     Http(action)
   } 
+
   /** Grabs the information for a single pull request. */
   def pullrequest(user: String, repo: String, number: String): Pull = {
     val url = makeAPIurl("/repos/%s/%s/pulls/%s?per_page=100" format (user,repo,number))
@@ -96,7 +97,41 @@ trait API {
     val action = (url.POST << json >- parseJsonTo[PullRequestStatus])
     Http(action)
   }
-    
+
+  // POST /repos/:owner/:repo/issues/:number/labels
+  def addLabel(user: String, repo: String, number: String, labels: List[String]): List[Label] = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s/labels" format (user, repo, number))
+    val action = (url.POST << makeJson(labels) >- parseJsonTo[List[Label]])
+    Http(action)
+  }
+
+  // DELETE /repos/:owner/:repo/issues/:number/labels/:name
+  def deleteLabel(user: String, repo: String, number: String, label: String) = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s/labels/%s" format (user, repo, number, label))
+    Http(url.DELETE >|)
+  }
+
+  // GET /repos/:owner/:repo/issues/:number/labels
+  def labels(user: String, repo: String, number: String): List[Label] = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s/labels" format (user, repo, number))
+    val action = (url >- parseJsonTo[List[Label]])
+    Http(action)
+  }
+
+  // GET /repos/:owner/:repo/labels
+  def allLabels(user: String, repo: String): List[Label] = {
+    val url = makeAPIurl("/repos/%s/%s/labels" format (user, repo))
+    val action = (url >- parseJsonTo[List[Label]])
+    Http(action)
+  }
+
+  // POST /repos/:owner/:repo/labels
+  def createLabel(user: String, repo: String, label: Label): List[Label] = {
+    val url = makeAPIurl("/repos/%s/%s/labels" format (user, repo))
+    val action = (url.POST << makeJson(label) >- parseJsonTo[List[Label]])
+    Http(action)
+  }
+
 }
 
 object API {
@@ -224,4 +259,11 @@ case class IssueComment(body: String) {
   // import Printer._
 
   def toJson = makeJson(this) //pretty(render(JObject(List(JField("body", JString(body))))))
+}
+
+case class Label(name: String, color: String = "FFFFFF", url: Option[String] = None) {
+  override def equals(o: Any) = o match {
+    case Label(`name`, `color`, _) => true
+    case _ => false
+  }
 }
