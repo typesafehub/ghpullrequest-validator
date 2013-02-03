@@ -49,8 +49,10 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
     // only the builds part of the reply is wrong
 
     val start =
-      if (reportedBuilds.isEmpty) info.firstBuild.number.toInt
-      else reportedBuilds.last.number.toInt
+      try {
+        if (reportedBuilds.isEmpty) info.firstBuild.number.toInt
+        else reportedBuilds.last.number.toInt
+      } catch { case x: Exception => 1 }
     val allBuilds = {
         val additionalBuilds = try {
             (start to info.lastBuild.number.toInt) map { number =>
