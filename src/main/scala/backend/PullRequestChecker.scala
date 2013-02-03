@@ -57,24 +57,28 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
 
     if (forcedJobs.nonEmpty) {
-      commits foreach (c => forcedJobs foreach (j => buildCommit(c.sha, j)))
+      commits foreach (c => forcedJobs foreach (j => buildCommit(c.sha, j, force = true)))
     } else {
       commits foreach { c =>
         val stati = ghapi.commitStatus(user, repo, c.sha).filterNot(_.failed)
         jenkinsJobs foreach { j =>
-          if (!stati.exists(_.forJob(j.name)))
+          val jobStati = stati.filter(_.forJob(j.name))
+          if (jobStati.isEmpty)
             buildCommit(c.sha, j)
+          else if(stati.forall(_.pending))
+            buildCommit(c.sha, j) // won't trigger a new build if one is already running for this sha and job
         }
       }
     }
 
-    def buildCommit(sha: String, job: JenkinsJob) = if (!active(sha, job)) {
+    def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false) = if (force || !active(sha, job)) {
       log.debug("build commit "+ sha +" for #"+ pull.number +" job: "+ job)
       active.+=((sha, job))
       jobBuilder ! BuildCommit(sha, job,
                                 Map("pullrequest" -> pull.number.toString,
                                     "sha" -> sha,
-                                    "mergebranch" -> pull.base.ref), 
+                                    "mergebranch" -> pull.base.ref),
+                                force,
                                 context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)), job.name +"-commenter-"+ sha))
     }
   }

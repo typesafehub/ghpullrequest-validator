@@ -6,7 +6,7 @@ import akka.util.duration._
 import rest.jenkins.BuildStatus
 
 // External Messages
-case class BuildCommit(sha: String, job: JenkinsJob, args: Map[String,String], commenter: ActorRef)
+case class BuildCommit(sha: String, job: JenkinsJob, args: Map[String,String], force: Boolean, commenter: ActorRef)
 case class BuildStarted(url: String)
 case class BuildResult(status: BuildStatus)
 

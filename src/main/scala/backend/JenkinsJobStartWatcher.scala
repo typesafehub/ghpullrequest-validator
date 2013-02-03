@@ -35,48 +35,32 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         if (retryCount < MAX_RETRIES) JRetry else JStop
     }
 
-  // a after b or within 2 minutes (to account for clock skew)
-  private def closeEnough(a: Long, b: Long) =
-    a >= b || (b - a)/1000 <= 120
-
-  private[this] var startDate: Option[Long] = None
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
       case JQueue =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
       case JRetry =>
-        // try to start the job on jenkins once
-        startDate match {
-          case None =>
-            // we haven't started our own build yet, but maybe an older one is running
-            // watch its result, but still start our own
-            ourJobs.filter(_.building).foreach { status =>
-              log.debug("found previously running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
-              jenkinsService ! JobStarted(b, status)
-            }
+        retryCount += 1
+        // we haven't started our own build yet, but maybe an older one is running
+        // watch its result, but still start our own
+        val runningBuilds = ourJobs.filter(_.building) match {
+          case bs if bs.isEmpty => ourJobs.headOption.toStream // if no running builds, just look at the most recent one
+          case bs => bs
+        }
 
-            startDate = Some(System.currentTimeMillis)
-            api.buildJob(b.job, b.args)
-            log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
-          case Some(start) =>
-            retryCount += 1
-            findBuild match {
-              // TODO: make sure it's the build we triggered by adding a UID to the build params
-              // for now, assume all builds started close to when we tried starting our job are ours
-              case Some(status) if closeEnough(status.timestamp.toLong, start) =>
-                b.commenter ! BuildStarted(status.url)
+        runningBuilds.foreach { status =>
+          log.debug("found running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
+          jenkinsService ! JobStarted(b, status)
+          b.commenter ! BuildStarted(status.url)
+        }
 
-                // Create a "done" watcher and let him go to town on the specific build.
-                // Pass the props to our parent so he "owns" the watcher when we die.
-                jenkinsService ! JobStarted(b, status)
-                context stop self
-              case s =>
-                if (s.nonEmpty) log.debug("found build but not ours? "+ (b.job, "#"+b.args.get("pullrequest"), s.get))
-                // no running job found
-                // start looking for it to appear
-                context setReceiveTimeout (1 minutes)
-            }
-          }
+        // if there's a running job for this commit and this job, that's good enough (unless we encountered an explicit PLS REBUILD --> b.force)
+        if (runningBuilds.nonEmpty && !b.force) context stop self
+        else {
+          api.buildJob(b.job, b.args)
+          log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
+          context setReceiveTimeout (1 minutes)
+        }
 
       case JStop =>
         log.debug("timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
