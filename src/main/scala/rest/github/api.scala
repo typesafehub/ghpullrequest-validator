@@ -258,7 +258,7 @@ case class CommitStatus(
 
   import CommitStatus._
 
-  def forJob(job: String) = description match { case Some(s) if s.startsWith("Job "+ job) => true case _ => false }
+  def forJob(job: String) = description match { case Some(s) if s.startsWith(job) => true case _ => false }
   // jenkins job is running
   def pending = state == PENDING
   // jenkins job was successful
@@ -275,9 +275,9 @@ object CommitStatus {
   final val ERROR = "error"
   final val FAILURE = "failure"
 
-  def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some("Job %s started." format (name, url)))
+  def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
   def jobEnded(name: String, url: String, ok: Boolean, message: String) =
-    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some("Job %s ended.\n%s" format (name, message)))
+    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name +": "+ message).take(140)))
 }
 
 

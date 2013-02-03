@@ -65,7 +65,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
           val jobStati = stati.filter(_.forJob(j.name))
           if (jobStati.isEmpty)
             buildCommit(c.sha, j)
-          else if(stati.forall(_.pending))
+          else if(jobStati.last.pending)
             buildCommit(c.sha, j) // won't trigger a new build if one is already running for this sha and job
         }
       }

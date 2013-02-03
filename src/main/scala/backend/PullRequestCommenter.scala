@@ -54,6 +54,9 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
           case _: Exception => line
         }})
 
+      val duration = try { status.duration.toInt / 1000 } catch { case x: Exception => 0 }
+      val durationReport = "Took " + (if (duration < 120) duration + " s." else (duration / 60) + " min.")
+
       val message =
         status.result match {
           case "FAILURE" =>
@@ -63,12 +66,21 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
             val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
-            if (log.exists(_.contains("test.suite"))) {
-              log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList.mkString("\nFailed tests:", "\n", "")
-            } else {
-              val (a, bs) = failureLog.span(! _.startsWith("Total time: "))
-              (a.toList + bs.take(1).toList.headOption.getOrElse("")).mkString("\n")
-            }
+            val failedTests =
+              if (log.exists(_.contains("test.suite"))) {
+                log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
+              } else Nil
+
+            // comment anyway because github only looks at last commit to determine merge status
+            ghapi.addPRComment(user, repo, pull.number.toString,
+                "Job "+ job.name +" failed for "+ sha.take(6) +":\n"+
+                (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "") +
+                durationReport +
+                "\n![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
+                )
+            val testReport = if (failedTests.nonEmpty) (failedTests.length+ " tests failed. ") else ""
+
+            "Build failed."+ testReport + durationReport
 
           case "ABORTED" =>
             needsAttention()
@@ -84,7 +96,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
             "Build aborted."
           case _ =>
-            ""
+            durationReport
         }
 
       ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
