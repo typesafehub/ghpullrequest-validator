@@ -12,7 +12,7 @@ import rest.github.CommitStatus
  * stand-alone.
  */
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, sha: String, notify: ActorRef) extends Actor with ActorLogging {
-  val SPURIOUS_REBUILD = "SPURIOUS ABORT? -- PLS REBUILD "
+  val SPURIOUS_REBUILD = "SPURIOUS ABORT?"
 
   def needsAttention() = {
     val currLabelNames = ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name)
@@ -78,7 +78,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
             val comment =
               if (comments.exists(_.body.contains(SPURIOUS_REBUILD))) "Tried automatically rebuilding once before, not falling for it again!"
-              else SPURIOUS_REBUILD + job.name
+              else SPURIOUS_REBUILD +" -- PLS REBUILD "+ job.name
 
             ghapi.addPRComment(user, repo, pull.number.toString, comment)
 
