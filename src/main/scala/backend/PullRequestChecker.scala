@@ -22,6 +22,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
   
   // cache of currently validating commits so we don't duplicate effort....
   val active = collection.mutable.HashSet[(String, JenkinsJob)]()
+  val forced = collection.mutable.HashSet[(String, JenkinsJob)]()
   
   
   def receive: Receive = {
@@ -29,6 +30,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       checkPullRequest(pull, jobs)
     case CommitDone(sha, job) =>
       active.-=((sha, job))
+      forced.-=((sha, job))
   }
 
   // TODO - Ordering.
@@ -75,15 +77,17 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
       }
     }
 
-    def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false) = if (force || !active(sha, job)) {
+    def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false) = if ( (force && !forced(sha, job)) || !active(sha, job)) {
       log.debug("build commit "+ sha +" for #"+ pull.number +" job: "+ job)
       active.+=((sha, job))
+      forced.+=((sha, job))
+      val forcedUniq = if (force) "-forced" else ""
       jobBuilder ! BuildCommit(sha, job,
                                 Map("pullrequest" -> pull.number.toString,
                                     "sha" -> sha,
                                     "mergebranch" -> pull.base.ref),
                                 force,
-                                context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)), job.name +"-commenter-"+ sha))
+                                context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)), job.name +"-commenter-"+ sha + forcedUniq))
     }
   }
   
