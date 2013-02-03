@@ -78,7 +78,7 @@ trait API {
     Http(action)
   }
 
-  def makepullrequestcomment(user: String, repo: String, number: String, comment: String): Comment = {
+  def addPRComment(user: String, repo: String, number: String, comment: String): Comment = {
     val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user, repo, number))
     val json = IssueComment(comment).toJson
     val action = (url.POST << json >- parseJsonTo[Comment])

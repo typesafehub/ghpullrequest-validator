@@ -10,7 +10,7 @@ import akka.util.duration._
  * notifies the jenkinsService that the job has started.
  */
 // TODO - We need a new way to detect a job has started...
-class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: ActorRef) extends Actor with ActorLogging {
+class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: ActorRef) extends Actor with ActorLogging {
   // TODO - Use better time library....
 
   // Set timeout to check when the job has started.
@@ -85,16 +85,6 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildProject, jenkinsService: A
     }
   }
 
-  // // TODO - Look into adding UUID to build parameters....
-  // private final def isSame(params: List[rest.jenkins.Param], args: Map[String,String]): Boolean = {
-  //   val allsame = (for {
-  //     param <- params
-  //     other <- args get param.name
-  //   } yield other == param.value) forall identity
-  //   // TODO - does this handle defaults?
-  //   // log.debug("isSame: "+(params, args, allsame))
-  //   allsame //&& params.size == args.size
-  // }
   
   def ourJobs =
     api.buildStatusForJob(b.job).filter { status =>

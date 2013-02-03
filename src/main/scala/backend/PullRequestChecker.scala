@@ -8,7 +8,7 @@ import util.control.Exception.catching
 
 case class CheckPullRequests(username: String, project: String, jobs: Set[JenkinsJob])
 case class CheckPullRequest(pull: rest.github.Pull, jobs: Set[JenkinsJob])
-case class CheckPullRequestDone(pull: rest.github.Pull, job: JenkinsJob)
+case class CommitDone(sha: String, job: JenkinsJob)
 
 
 /** This actor is responsible for validating that a pull request has had all required tests executed
@@ -20,68 +20,62 @@ case class CheckPullRequestDone(pull: rest.github.Pull, job: JenkinsJob)
 class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor with ActorLogging{
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
-  // cache of currently validating pull requests so we don't duplicate effort....
-  var active = Set.empty[String]
+  // cache of currently validating commits so we don't duplicate effort....
+  val active = collection.mutable.HashSet[(String, JenkinsJob)]()
   
   
   def receive: Receive = {
-    case CheckPullRequest(pull, jobs)    => checkPullRequest(pull, jobs)
-    case CheckPullRequestDone(pull, job) => active -= hash(pull, job)
+    case CheckPullRequest(pull, jobs) =>
+      checkPullRequest(pull, jobs)
+    case CommitDone(sha, job) =>
+      active.-=((sha, job))
   }
-  
-  /** Generates a hash of a pullrequest/job pairing so we don't duplicate work. */
-  private def hash(pull: rest.github.Pull, job: JenkinsJob) =
-    "%s-%s-%s-%s" format (pull.base.repo.owner.login,
-                          pull.base.repo.name,
-                          pull.head.sha,
-                          job.name)
-  
+
   // TODO - Ordering.
   private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[JenkinsJob]): Unit = {
-    val comments = ghapi.pullrequestcomments(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
-    val commits = ghapi.pullrequestcommits(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString)
-    def lastJobDoneTime(job: JenkinsJob): Option[String] = (
-        for {
-          comment <- comments
-          if comment.body startsWith ("jenkins job " + job.name)
-        } yield comment.created_at
-      ).lastOption 
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+    val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
     
-    def lastJobRequestTime(job: JenkinsJob): String = {
-      val created: Seq[String] = Vector(pull.created_at)
-      val requests = for {
-        comment <- comments
-        if (comment.body contains ("PLS REBUILD ALL")) || (comment.body contains ("PLS REBUILD " + job))
-      } yield comment.created_at
-      // TODO - Check commit times, so we rebuild on new commits.
-      // val newCommits = <search commits for last updated time>
-      val commitTimes = commits map (_.commit.committer.date)
-      (created ++ requests ++ commitTimes).max
+    val rebuildCommands = comments collect { case c if c.body.contains("PLS REBUILD") =>
+      val job = c.body.split("PLS REBUILD").last.lines.take(1).toList.headOption.getOrElse("")
+      val trimmed = job.trim
+      val jobs =
+        if (trimmed.startsWith("ALL")) jenkinsJobs
+        else jenkinsJobs.filter(j => trimmed.contains(j.name))
+
+      (jobs, c.id, c.body.replace("PLS REBUILD"+job, ":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ")+ ". :rotating_light:\n"))
+    }
+
+    val forcedJobs = rebuildCommands.map(_._1).flatten
+    rebuildCommands foreach {case (_, id, newBody) =>
+      ghapi.editPRComment(user, repo, id, newBody)
     }
     
-    def needsRebuilt(job: JenkinsJob): Boolean =
-      lastJobDoneTime(job) match {
-        case Some(lastDone) if lastJobRequestTime(job) < lastDone =>
-          log.debug("no need to rebuild "+ job.name +" for #"+ pull.number)
-          false
-        case done =>
-          log.debug("must rebuild "+ job.name +" for #"+ pull.number +""+ (done, lastJobRequestTime(job)))
-          true
-      }
-          
-    val builds = jenkinsJobs filter needsRebuilt
 
-    def makeCommenter(job: JenkinsJob): ActorRef =
-      context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, self)), job.name +"-commenter-"+ pull.number)
-    
-    // For all remaining verification jobs, spit out a new job.
-    builds.toSeq.sorted.filterNot(job => active(hash(pull, job))).foreach { job =>
-      log.debug("BuildProject #"+ pull.number +" job: "+ job)
-      active += hash(pull,job)
-      jobBuilder ! BuildProject(job, 
+    // TODO: use futures
+    val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
+
+    if (forcedJobs.nonEmpty) {
+      commits foreach (c => forcedJobs foreach (j => buildCommit(c.sha, j)))
+    } else {
+      commits foreach { c =>
+        val stati = ghapi.commitStatus(user, repo, c.sha).filterNot(_.failed)
+        jenkinsJobs foreach { j =>
+          if (!stati.exists(_.forJob(j.name)))
+            buildCommit(c.sha, j)
+        }
+      }
+    }
+
+    def buildCommit(sha: String, job: JenkinsJob) = if (!active(sha, job)) {
+      log.debug("build commit "+ sha +" for #"+ pull.number +" job: "+ job)
+      active.+=((sha, job))
+      jobBuilder ! BuildCommit(sha, job,
                                 Map("pullrequest" -> pull.number.toString,
+                                    "sha" -> sha,
                                     "mergebranch" -> pull.base.ref), 
-                                makeCommenter(job))
+                                context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)), job.name +"-commenter-"+ sha))
     }
   }
   
