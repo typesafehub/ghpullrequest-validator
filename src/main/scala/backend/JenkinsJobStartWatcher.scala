@@ -39,6 +39,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
     jenkinsStatus match {
       case JQueue =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
+        context setReceiveTimeout (10 minutes)
       case JRetry =>
         retryCount += 1
         // we haven't started our own build yet, but maybe an older one is running
