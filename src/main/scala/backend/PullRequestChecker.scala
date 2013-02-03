@@ -35,21 +35,25 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
   private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[JenkinsJob]): Unit = {
     val user = pull.base.repo.owner.login
     val repo = pull.base.repo.name
-    val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
-    
-    val rebuildCommands = comments collect { case c if c.body.contains("PLS REBUILD") =>
+    val pullNum = pull.number.toString
+    val comments = ghapi.pullrequestcomments(user, repo, pullNum)
+    val IGNORE_NOTE_TO_SELF = "(kitty-note-to-self: ignore "
+    val rebuildCommands = comments collect { case c
+        if c.body.contains("PLS REBUILD")
+        && !comments.exists(_.body.startsWith(IGNORE_NOTE_TO_SELF+ c.id)) =>
+
       val job = c.body.split("PLS REBUILD").last.lines.take(1).toList.headOption.getOrElse("")
       val trimmed = job.trim
       val jobs =
         if (trimmed.startsWith("ALL")) jenkinsJobs
         else jenkinsJobs.filter(j => trimmed.contains(j.name))
 
-      (jobs, c.id, c.body.replace("PLS REBUILD"+job, ":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ")+ ". :rotating_light:\n"))
+      (jobs, IGNORE_NOTE_TO_SELF+ c.id +")\n"+ ":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ")+ ". :rotating_light:\n")
     }
 
     val forcedJobs = rebuildCommands.map(_._1).flatten
-    rebuildCommands foreach {case (_, id, newBody) =>
-      ghapi.editPRComment(user, repo, id, newBody)
+    rebuildCommands foreach {case (_, newBody) =>
+      ghapi.addPRComment(user, repo, pullNum, newBody)
     }
     
 
