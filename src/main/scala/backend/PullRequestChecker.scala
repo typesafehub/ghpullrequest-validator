@@ -6,11 +6,12 @@ import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
 import rest.github.PRCommit
 import rest.github.CommitStatus
+import rest.github.Pull
 
 
-case class CheckPullRequests(username: String, project: String, jobs: Set[JenkinsJob])
-case class CheckPullRequest(pull: rest.github.Pull, jobs: Set[JenkinsJob])
-case class CommitDone(sha: String, job: JenkinsJob)
+case class CheckPullRequests(username: String, project: String)
+case class CheckPullRequest(pull: Pull)
+case class CommitDone(pull: Pull, sha: String, job: JenkinsJob)
 
 
 /** This actor is responsible for validating that a pull request has had all required tests executed
@@ -19,7 +20,7 @@ case class CommitDone(sha: String, job: JenkinsJob)
  * Note: Any job sent to this actor must support one and only one build parameter,
  * "pullrequest"
  */
-class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor with ActorLogging{
+class PullRequestChecker(ghapi: GithubAPI, jobs: Set[JenkinsJob], jobBuilderProps: Props) extends Actor with ActorLogging{
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
   // cache of currently validating commits so we don't duplicate effort....
@@ -28,11 +29,31 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
   
   
   def receive: Receive = {
-    case CheckPullRequest(pull, jobs) =>
+    case CheckPullRequest(pull) =>
       checkPullRequest(pull, jobs)
-    case CommitDone(sha, job) =>
+    case CommitDone(pull, sha, job) =>
+      checkSuccess(pull)
       active.-=((sha, job))
       forced.-=((sha, job))
+  }
+
+  private def checkSuccess(pull: Pull) = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+    val pullNum = pull.number.toString
+
+    val commits = ghapi.pullrequestcommits(user, repo, pullNum)
+    val currLabelNames = ghapi.labels(user, repo, pullNum).map(_.name)
+    val hasTestedLabel = currLabelNames.contains("tested")
+
+    val commitStati = commits map (c => ghapi.commitStatus(user, repo, c.sha))
+
+    val success = jobs forall (j => commitStati.map(_.filter(_.forJob(j.name)).lastOption.map(_.success).getOrElse(false)).reduce(_ && _))
+
+    if (success && !hasTestedLabel)
+      ghapi.addLabel(user, repo, pullNum, List("tested"))
+    else if (!success && hasTestedLabel)
+      ghapi.deleteLabel(user, repo, pullNum, "tested")
   }
 
   // TODO - Ordering.

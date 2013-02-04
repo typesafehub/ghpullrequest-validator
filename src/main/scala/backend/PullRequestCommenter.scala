@@ -24,23 +24,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("needs-attention"))
   }
 
-  // TODO: only when all jobs have completed
-  def checkSuccess() = {
-    val user = pull.base.repo.owner.login
-    val repo = pull.base.repo.name
-    val pullNum = pull.number.toString
-
-    val commits = ghapi.pullrequestcommits(user, repo, pullNum)
-    val currLabelNames = ghapi.labels(user, repo, pullNum).map(_.name)
-    val hasTestedLabel = currLabelNames.contains("tested")
-    val success = commits.forall { c => ghapi.commitStatus(user, repo, c.sha).forall(_.success) }
-
-    if (success && !hasTestedLabel)
-      ghapi.addLabel(user, repo, pullNum, List("tested"))
-    else if (!success && hasTestedLabel)
-      ghapi.deleteLabel(user, repo, pullNum, "tested")
-  }
-
 
 //      // purposefully only at start of line to avoid conditional LGTMs
 //      // TODO: do this on every new comment
@@ -121,9 +104,8 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
       ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
 
-      checkSuccess()
 
-      notify ! CommitDone(sha, job)
+      notify ! CommitDone(pull, sha, job)
       // TODO - Can we kill ourselves now? I think so.
       context stop self
   }
