@@ -4,6 +4,8 @@ import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import akka.util.duration._
 import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
+import rest.github.PRCommit
+import rest.github.CommitStatus
 
 
 case class CheckPullRequests(username: String, project: String, jobs: Set[JenkinsJob])
@@ -40,27 +42,52 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     val pullNum = pull.number.toString
     val comments = ghapi.pullrequestcomments(user, repo, pullNum)
     val IGNORE_NOTE_TO_SELF = "(kitty-note-to-self: ignore "
-    val rebuildCommands = comments collect { case c
-        if c.body.contains("PLS REBUILD")
+
+    // must add a comment that starts with the first element of each returned pair
+    def findNewCommands(command: String): List[(String, String)] =
+      comments collect { case c
+        if c.body.contains(command)
         && !comments.exists(_.body.startsWith(IGNORE_NOTE_TO_SELF+ c.id)) =>
 
-      val job = c.body.split("PLS REBUILD").last.lines.take(1).toList.headOption.getOrElse("")
+        (IGNORE_NOTE_TO_SELF+ c.id +")\n", c.body)
+      }
+
+    val rebuildCommands = findNewCommands("PLS REBUILD") map { case (prefix, body) =>
+      val job = body.split("PLS REBUILD").last.lines.take(1).toList.headOption.getOrElse("")
       val trimmed = job.trim
       val jobs =
         if (trimmed.startsWith("ALL")) jenkinsJobs
         else jenkinsJobs.filter(j => trimmed.contains(j.name))
 
-      (jobs, IGNORE_NOTE_TO_SELF+ c.id +")\n"+ ":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ")+ ". :rotating_light:\n")
+      (jobs, prefix +":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ")+ ". :rotating_light:\n")
     }
 
     val forcedJobs = rebuildCommands.map(_._1).flatten
     rebuildCommands foreach {case (jobs, newBody) if jobs.nonEmpty =>
       ghapi.addPRComment(user, repo, pullNum, newBody)
     }
-    
 
     // TODO: use futures
     val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
+
+    def buildLog(commits: List[PRCommit]) = {
+      val commitStati = commits map (c => (c, ghapi.commitStatus(user, repo, c.sha)))
+
+      jenkinsJobs.map{ j =>
+        def describeCS(cs: CommitStatus) =
+          (if (cs.url.nonEmpty) "["+cs.state+"]("+ cs.url.get +")" else cs.state)+ cs.description.getOrElse("")
+
+        def describe(jss: (PRCommit, List[CommitStatus])) = "  - "+ jss._1.sha.take(8)+": "+ jss._2.map(describeCS).mkString(", ")
+
+        val jobStati = commitStati.map{case (c, stati) => (c, stati.filter(_.forJob(j.name)))}.map(describe)
+
+        j.name +":\n"+ jobStati.mkString("\n")
+      }.mkString("\n\n")
+    }
+
+    val buildLogCommands = findNewCommands("BUILDLOG?") map { case (prefix, body) =>
+      ghapi.addPRComment(user, repo, pullNum, prefix + buildLog(commits))
+    }
 
     if (forcedJobs.nonEmpty) {
       commits foreach (c => forcedJobs foreach (j => buildCommit(c.sha, j, force = true)))
