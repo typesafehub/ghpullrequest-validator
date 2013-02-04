@@ -53,6 +53,9 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
 
   def receive: Receive = {
+    case BuildQueued =>
+      ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobQueued(job.name))
+
     case BuildStarted(url) =>
       ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobStarted(job.name, url))
 

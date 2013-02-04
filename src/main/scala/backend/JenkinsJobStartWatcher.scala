@@ -37,6 +37,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
     }
 
   private val knownRunning = collection.mutable.HashSet[String]()
+  private var notifiedCommenter = false
 
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
@@ -47,7 +48,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
       case s@(JQueue | JRetry) =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
-        if (s == JQueue) context setReceiveTimeout (10 minutes)
+        if (s == JQueue)  context setReceiveTimeout (10 minutes)
         else retryCount += 1
 
         // we haven't started our own build yet, but maybe an older one is running
@@ -66,6 +67,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
           } else {
             b.commenter ! BuildResult(status)
           }
+          notifiedCommenter = true
         }
 
         knownRunning ++= newlyDiscovered.map(_.url)
@@ -76,6 +78,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
           api.buildJob(b.job, b.args)
           log.debug("Started job for #"+ b.args("pullrequest") +" --> "+ b.job.name +" sha: "+ b.args("sha"))
           context setReceiveTimeout (1 minutes)
+        }
+
+        if (!notifiedCommenter) {
+          b.commenter ! BuildQueued
+          notifiedCommenter = true
         }
 
     }

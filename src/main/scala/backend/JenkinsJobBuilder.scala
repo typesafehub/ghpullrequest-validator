@@ -9,7 +9,7 @@ import rest.jenkins.BuildStatus
 case class BuildCommit(sha: String, job: JenkinsJob, args: Map[String,String], force: Boolean, noop: Boolean, commenter: ActorRef)
 case class BuildStarted(url: String)
 case class BuildResult(status: BuildStatus)
-
+case object BuildQueued
 
 // Internal messages
 case class JobStarted(b: BuildCommit, status: BuildStatus)
