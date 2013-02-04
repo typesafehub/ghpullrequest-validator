@@ -274,6 +274,11 @@ case class CommitStatus(
 
   // something went wrong
   def failed  = state == FAILURE
+
+  override def equals(x: Any) = x match {
+    case CommitStatus(`state`, `target_url`, `description`, _, _, _, _, _) => true
+    case _ => false
+  }
 }
 object CommitStatus {
   final val PENDING = "pending"

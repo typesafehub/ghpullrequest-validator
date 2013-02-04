@@ -34,13 +34,21 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
   private val user = pull.base.repo.owner.login
   private val repo = pull.base.repo.name
 
+  def addStatus(status: CommitStatus) = {
+    if (!ghapi.commitStatus(user, repo, sha).contains(status)) {
+      log.debug("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
+
+      ghapi.setCommitStatus(user, repo, sha, status)
+    } else
+      log.debug("Already set status " + status.state + " for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
+  }
 
   def receive: Receive = {
     case BuildQueued =>
-      ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobQueued(job.name))
+      addStatus(CommitStatus.jobQueued(job.name))
 
     case BuildStarted(url) =>
-      ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobStarted(job.name, url))
+      addStatus(CommitStatus.jobStarted(job.name, url))
 
     case BuildResult(status) =>
       def cleanPartestLine(line: String) = ("  - " + {
@@ -102,8 +110,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             durationReport
         }
 
-      ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
-
+      addStatus(CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
 
       notify ! CommitDone(pull, sha, job)
       // TODO - Can we kill ourselves now? I think so.
