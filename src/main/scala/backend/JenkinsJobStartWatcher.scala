@@ -36,7 +36,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         if (retryCount < MAX_RETRIES) JRetry else JStop
     }
 
-  private val knownRunning = collection.mutable.HashSet[BuildStatus]()
+  private val knownRunning = collection.mutable.HashSet[String]()
 
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
@@ -57,7 +57,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
           case bs => bs.toSet
         }
 
-        val newlyDiscovered = (runningBuilds -- knownRunning)
+        val newlyDiscovered = runningBuilds.filterNot(bs => knownRunning(bs.url))
 
         newlyDiscovered.foreach { status =>
           log.debug("found running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
@@ -65,7 +65,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
           b.commenter ! BuildStarted(status.url)
         }
 
-        knownRunning ++= newlyDiscovered
+        knownRunning ++= newlyDiscovered.map(_.url)
 
         // if there's a running job for this commit and this job, that's good enough (unless we encountered an explicit PLS REBUILD --> b.force)
         if (newlyDiscovered.nonEmpty && !b.force) context stop self
