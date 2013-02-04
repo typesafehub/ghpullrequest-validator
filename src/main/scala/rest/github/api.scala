@@ -78,23 +78,32 @@ trait API {
     Http(action)
   }
 
-  def makepullrequestcomment(user: String, repo: String, number: String, comment: String): Comment = {
+  def addPRComment(user: String, repo: String, number: String, comment: String): Comment = {
     val url = makeAPIurl("/repos/%s/%s/issues/%s/comments" format (user, repo, number))
     val json = IssueComment(comment).toJson
     val action = (url.POST << json >- parseJsonTo[Comment])
     Http(action)
   }
   
-  def pullrequeststatuses(user: String, repo: String, commitsha: String): List[PullRequestStatus] = {
-    val url = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
-    val action = url >- parseJsonTo[List[PullRequestStatus]]
+  // PATCH /repos/:owner/:repo/issues/comments/:id
+  def editPRComment(user: String, repo: String, id: String, body: String): Comment = {
+    val url = makeAPIurl("/repos/%s/%s/issues/comments/%s" format (user, repo, id))
+    val json = IssueComment(body).toJson
+    val action = (url.copy(method="PATCH") << json >- parseJsonTo[Comment])
     Http(action)
   }
+
   
-  def makepullrequeststatus(user: String, repo: String, commitsha: String, status: PullRequestStatus): PullRequestStatus = {
-    val url = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
-    val json = status.toJson
-    val action = (url.POST << json >- parseJsonTo[PullRequestStatus])
+  def commitStatus(user: String, repo: String, commitsha: String): List[CommitStatus] = {
+    val url    = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
+    val action = url >- parseJsonTo[List[CommitStatus]]
+    Http(action)
+  }
+
+  def setCommitStatus(user: String, repo: String, commitsha: String, status: CommitStatus): CommitStatus = {
+    val url    = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
+    val json   = status.toJson
+    val action = (url.POST << json >- parseJsonTo[CommitStatus])
     Http(action)
   }
 
@@ -131,6 +140,7 @@ trait API {
     val action = (url.POST << makeJson(label) >- parseJsonTo[List[Label]])
     Http(action)
   }
+
 
 }
 
@@ -208,6 +218,7 @@ case class GitRef(
 }
 
 case class PRCommit(
+  sha: String,
   url: String,
   commit: CommitInfo
 )
@@ -232,7 +243,7 @@ case class Comment(
     created_at: String,
     updated_at: String)
     
-case class PullRequestStatus(
+case class CommitStatus(
   // User defined
   state: String,
   target_url: Option[String]=None,
@@ -244,12 +255,29 @@ case class PullRequestStatus(
   url: Option[String]=None,
   creator: Option[User]=None) {
   def toJson = makeJson(this)
+
+  import CommitStatus._
+
+  def forJob(job: String) = description match { case Some(s) if s.startsWith(job) => true case _ => false }
+  // jenkins job is running
+  def pending = state == PENDING
+  // jenkins job was successful
+  def success = state == SUCCESS
+  // jenkins job found an error
+  def error   = state == ERROR
+
+  // something went wrong
+  def failed  = state == FAILURE
 }
-object PullRequestStatus {
+object CommitStatus {
   final val PENDING = "pending"
   final val SUCCESS = "success"
   final val ERROR = "error"
   final val FAILURE = "failure"
+
+  def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
+  def jobEnded(name: String, url: String, ok: Boolean, message: String) =
+    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name +": "+ message).take(140)))
 }
 
 

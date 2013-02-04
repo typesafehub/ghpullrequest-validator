@@ -47,11 +47,15 @@ class API(jenkinsUrl: String, auth: Option[(String,String)] = None) {
     // work around https://issues.jenkins-ci.org/browse/JENKINS-15583 -- jenkins not reporting all running builds
     // so hack it by closing the range from the last reported build to the lastBuild in the Json response, which is correct
     // only the builds part of the reply is wrong
-    val allBuilds =
-      if (reportedBuilds.isEmpty) reportedBuilds
-      else {
+
+    val start =
+      try {
+        if (reportedBuilds.isEmpty) info.firstBuild.number.toInt
+        else reportedBuilds.last.number.toInt
+      } catch { case x: Exception => 1 }
+    val allBuilds = {
         val additionalBuilds = try {
-            (reportedBuilds.last.number.toInt to info.lastBuild.number.toInt) map { number =>
+            (start to info.lastBuild.number.toInt) map { number =>
               Build(number.toString, jenkinsUrl +"/job/"+ job.name +"/"+ number +"/")
             }
           } catch {
@@ -86,7 +90,8 @@ case class Job(name: String,
                nextBuildNumber: String,
                builds: List[Build],
                queueItem: Option[QueueItem],
-               lastBuild: Build)
+               lastBuild: Build,
+               firstBuild: Build)
    
 case class Build(number: String, url: String) extends Ordered[Build] {
   def num: Int = number.toInt

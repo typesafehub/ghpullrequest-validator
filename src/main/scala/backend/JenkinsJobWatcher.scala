@@ -6,7 +6,7 @@ import akka.util.duration._
 
 
 /** An actor that watches a specific job and returns its status when the job is completed. */
-class JenkinsJobWatcher(api: JenkinsAPI, build: BuildProject, buildnumber: String, watcher: ActorRef) extends Actor with ActorLogging {
+class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String) extends Actor with ActorLogging {
   log.debug("Watching for job finish: " + buildnumber)
   private var _backoff = 1
   def backoff: Int =
@@ -19,8 +19,9 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildProject, buildnumber: Strin
 
   def receive: Receive = {
     case ReceiveTimeout => 
-      val status = jobStatus
-      log.debug("Job finished? " + build.job.name + " - " + status + " building: "+ status.building + "current backoff: "+ _backoff)
+      val status = api.buildStatus(build.job, buildnumber)
+//      log.debug("Job finished? " + build.job.name + " - " + status + " building: "+ status.building + "current backoff: "+ _backoff)
+
       if (status.building) context setReceiveTimeout (backoff minutes)
       else {
         log.debug("Job finished! "+ build.job.name  +" - "+ status)
@@ -29,7 +30,7 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildProject, buildnumber: Strin
         context stop self
       }
   }
-  private def jobStatus = api.buildStatus(build.job, buildnumber)
+
   /** A timeout timer that wakes us up to check build status. */
   context setReceiveTimeout (2 minutes)
 }
