@@ -3,6 +3,7 @@ package backend
 import akka.actor.{Actor, ActorRef, ActorSystem, Props, ActorLogging, ReceiveTimeout}
 import rest.jenkins.{API => JenkinsAPI}
 import akka.util.duration._
+import rest.jenkins.BuildStatus
 
 
 
@@ -35,38 +36,45 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         if (retryCount < MAX_RETRIES) JRetry else JStop
     }
 
+  private val knownRunning = collection.mutable.HashSet[BuildStatus]()
+
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
-      case JQueue =>
+      case JStop =>
+        log.debug("timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
+        jenkinsService ! b // tell the service to rebuild
+        context stop self // stop looking for the job to start
+
+      case s@(JQueue | JRetry) =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
-        context setReceiveTimeout (10 minutes)
-      case JRetry =>
-        retryCount += 1
+        if (s == JQueue) context setReceiveTimeout (10 minutes)
+        else retryCount += 1
+
         // we haven't started our own build yet, but maybe an older one is running
         // watch its result, but still start our own
         val runningBuilds = ourJobs.filter(_.building) match {
-          case bs if bs.isEmpty => ourJobs.headOption.toStream // if no running builds, just look at the most recent one
-          case bs => bs
+          case bs if bs.isEmpty => ourJobs.headOption.toSet // if no running builds, just look at the most recent one
+          case bs => bs.toSet
         }
 
-        runningBuilds.foreach { status =>
+        val newlyDiscovered = (runningBuilds -- knownRunning)
+
+        newlyDiscovered.foreach { status =>
           log.debug("found running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
           jenkinsService ! JobStarted(b, status)
           b.commenter ! BuildStarted(status.url)
         }
 
+        knownRunning ++= newlyDiscovered
+
         // if there's a running job for this commit and this job, that's good enough (unless we encountered an explicit PLS REBUILD --> b.force)
-        if (runningBuilds.nonEmpty && !b.force) context stop self
-        else {
+        if (newlyDiscovered.nonEmpty && !b.force) context stop self
+        else if (s != JQueue) { // essentially duplicating jenkins' queue because it sucks (can't discover jobs)
           api.buildJob(b.job, b.args)
           log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
           context setReceiveTimeout (1 minutes)
         }
 
-      case JStop =>
-        log.debug("timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
-        jenkinsService ! b // tell the service to rebuild
-        context stop self // stop looking for the job to start
     }
   }
 
