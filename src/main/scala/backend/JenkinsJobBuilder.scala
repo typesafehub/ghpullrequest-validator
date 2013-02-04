@@ -13,7 +13,6 @@ case class BuildResult(status: BuildStatus)
 
 // Internal messages
 case class JobStarted(b: BuildCommit, status: BuildStatus)
-case class JobFinished(b: BuildCommit, status: BuildStatus)
   
 /** An actor that can build jenkins jobs. */
 class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor with ActorLogging {
@@ -28,7 +27,7 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor with ActorLogging {
     case JobStarted(build, status) =>
       log.debug("Job started: " + build.job.name + "-" + status.number)
       context.actorOf(
-          Props(new JenkinsJobWatcher(api, build, status.number, self)),
+          Props(new JenkinsJobWatcher(api, build, status.number)),
           build.job.name + "-" + status.number)
   }
 }
