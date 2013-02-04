@@ -80,7 +80,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
                 log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
               } else Nil
 
-            val jobDesc = "Job "+ job.name +" failed for "+ sha.take(6)
+            val jobDesc = "Job "+ job.name +" failed for "+ sha.take(8)
 
             val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
 
