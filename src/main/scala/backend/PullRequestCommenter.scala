@@ -88,7 +88,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             // TODO: why do we double-comment?
             if (!comments.exists(_.body.startsWith(jobDesc)))
               ghapi.addPRComment(user, repo, pull.number.toString,
-                  jobDesc +":\n"+
+                  jobDesc +" [(results)]("+ status.url +"):\n"+
                   (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
                   "<br><br>"+ durationReport +
                   "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
