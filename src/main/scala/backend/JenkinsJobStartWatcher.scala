@@ -28,11 +28,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
     api.jobInfo(b.job).queueItem match {
       // there's a queue, be patient as jenkins doesn't tell us about queued jobs
       case Some(rest.jenkins.QueueItem(true)) =>
-//        log.debug("Retrying -- queue "+ b.job +" #"+ b.args.get("pullrequest"))
+        log.debug("Queue "+ b.job +" #"+ b.args("pullrequest") +" commit "+ b.args("sha"))
         JQueue
       // no queue, if don't start finding it by now, something went wrong
       case _ =>
-//        log.debug("Retrying -- no queue for "+ b.job +" #"+ b.args.get("pullrequest"))
+        log.debug("No queue "+ b.job +" #"+ b.args("pullrequest") +" commit "+ b.args("sha"))
         if (retryCount < MAX_RETRIES) JRetry else JStop
     }
 
@@ -59,14 +59,14 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
         val newlyDiscovered = runningBuilds.filterNot(bs => knownRunning(bs.url))
 
-          newlyDiscovered.foreach { status =>
-            if (status.building) {
-              jenkinsService ! JobStarted(b, status)
-              b.commenter ! BuildStarted(status.url)
-            } else {
-              b.commenter ! BuildResult(status)
-            }
+        newlyDiscovered.foreach { status =>
+          if (status.building) {
+            jenkinsService ! JobStarted(b, status)
+            b.commenter ! BuildStarted(status.url)
+          } else {
+            b.commenter ! BuildResult(status)
           }
+        }
 
         knownRunning ++= newlyDiscovered.map(_.url)
 
@@ -74,7 +74,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         if (b.noop || (newlyDiscovered.nonEmpty && !b.force)) context stop self
         else if (s != JQueue) { // essentially duplicating jenkins' queue because it sucks (can't discover jobs)
           api.buildJob(b.job, b.args)
-          log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
+          log.debug("Started job for #"+ b.args("pullrequest") +" --> "+ b.job.name +" sha: "+ b.args("sha"))
           context setReceiveTimeout (1 minutes)
         }
 
