@@ -68,7 +68,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         knownRunning ++= newlyDiscovered.map(_.url)
 
         // if there's a running job for this commit and this job, that's good enough (unless we encountered an explicit PLS REBUILD --> b.force)
-        if (newlyDiscovered.nonEmpty && !b.force) context stop self
+        if (b.noop || (newlyDiscovered.nonEmpty && !b.force)) context stop self
         else if (s != JQueue) { // essentially duplicating jenkins' queue because it sucks (can't discover jobs)
           api.buildJob(b.job, b.args)
           log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
@@ -84,16 +84,4 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       status.actions.parameters.collect{case rest.jenkins.Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
     }
 
-
-  // Finds most recent build for this PR & merge branch
-  // we can't be sure it's us who started the build, so just assume the most recent build was us
-  def findBuild = {
-    val activeJobs = ourJobs.filter(_.building)
-    activeJobs.headOption match {
-      case res@Some(status) => log.debug("foundBuild "+ (b.job, b.args.get("pullrequest"), status))
-        res
-      case _ => log.debug("didn't find current build "+ (b.job, b.args.get("pullrequest"), activeJobs))
-        None
-    }
-  }
 }

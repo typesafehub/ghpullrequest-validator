@@ -72,12 +72,12 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
           if (jobStati.isEmpty)
             buildCommit(c.sha, j)
           else if(jobStati.last.pending)
-            buildCommit(c.sha, j) // won't trigger a new build if one is already running for this sha and job
+            buildCommit(c.sha, j, noop = true)
         }
       }
     }
 
-    def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false) = if ( (force && !forced(sha, job)) || !active(sha, job)) {
+    def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) = if ( (force && !forced(sha, job)) || !active(sha, job)) {
       log.debug("build commit "+ sha +" for #"+ pull.number +" job: "+ job)
       active.+=((sha, job))
       forced.+=((sha, job))
@@ -87,6 +87,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
                                     "sha" -> sha,
                                     "mergebranch" -> pull.base.ref),
                                 force,
+                                noop,
                                 context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)), job.name +"-commenter-"+ sha + forcedUniq))
     }
   }
