@@ -71,13 +71,20 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
                 log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
               } else Nil
 
+            val jobDesc = "Job "+ job.name +" failed for "+ sha.take(6)
+
+            val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
+
             // comment anyway because github only looks at last commit to determine merge status
-            ghapi.addPRComment(user, repo, pull.number.toString,
-                "Job "+ job.name +" failed for "+ sha.take(6) +":\n"+
-                (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "") +
-                durationReport +
-                "\n![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
-                )
+            // TODO: why do we double-comment?
+            if (!comments.exists(_.body.startsWith(jobDesc)))
+              ghapi.addPRComment(user, repo, pull.number.toString,
+                  jobDesc +":\n"+
+                  (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
+                  durationReport +
+                  "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
+                  )
+
             val testReport = if (failedTests.nonEmpty) (failedTests.length+ " tests failed. ") else ""
 
             "Build failed."+ testReport + durationReport
