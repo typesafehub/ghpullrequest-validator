@@ -28,11 +28,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
     api.jobInfo(b.job).queueItem match {
       // there's a queue, be patient as jenkins doesn't tell us about queued jobs
       case Some(rest.jenkins.QueueItem(true)) =>
-        log.debug("Retrying -- queue "+ b.job +" #"+ b.args.get("pullrequest"))
+//        log.debug("Retrying -- queue "+ b.job +" #"+ b.args.get("pullrequest"))
         JQueue
       // no queue, if don't start finding it by now, something went wrong
       case _ =>
-        log.debug("Retrying -- no queue for "+ b.job +" #"+ b.args.get("pullrequest"))
+//        log.debug("Retrying -- no queue for "+ b.job +" #"+ b.args.get("pullrequest"))
         if (retryCount < MAX_RETRIES) JRetry else JStop
     }
 
@@ -41,7 +41,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
       case JStop =>
-        log.debug("timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
+        log.debug("Timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
         jenkinsService ! b // tell the service to rebuild
         context stop self // stop looking for the job to start
 
@@ -59,11 +59,14 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
         val newlyDiscovered = runningBuilds.filterNot(bs => knownRunning(bs.url))
 
-        newlyDiscovered.foreach { status =>
-          log.debug("found running build "+ (b.job, "#"+b.args.get("pullrequest"), status))
-          jenkinsService ! JobStarted(b, status)
-          b.commenter ! BuildStarted(status.url)
-        }
+          newlyDiscovered.foreach { status =>
+            if (status.building) {
+              jenkinsService ! JobStarted(b, status)
+              b.commenter ! BuildStarted(status.url)
+            } else {
+              b.commenter ! BuildResult(status)
+            }
+          }
 
         knownRunning ++= newlyDiscovered.map(_.url)
 

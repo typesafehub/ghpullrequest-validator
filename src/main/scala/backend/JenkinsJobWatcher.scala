@@ -20,7 +20,8 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String
   def receive: Receive = {
     case ReceiveTimeout => 
       val status = api.buildStatus(build.job, buildnumber)
-      log.debug("Job finished? " + build.job.name + " - " + status + " building: "+ status.building + "current backoff: "+ _backoff)
+//      log.debug("Job finished? " + build.job.name + " - " + status + " building: "+ status.building + "current backoff: "+ _backoff)
+
       if (status.building) context setReceiveTimeout (backoff minutes)
       else {
         log.debug("Job finished! "+ build.job.name  +" - "+ status)

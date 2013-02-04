@@ -78,7 +78,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     }
 
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) = if ( (force && !forced(sha, job)) || !active(sha, job)) {
-      log.debug("build commit "+ sha +" for #"+ pull.number +" job: "+ job)
+      log.debug("Build commit "+ sha +" for #"+ pull.number +" job: "+ job)
       active.+=((sha, job))
       forced.+=((sha, job))
       val forcedUniq = if (force) "-forced" else ""
