@@ -90,7 +90,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
               ghapi.addPRComment(user, repo, pull.number.toString,
                   jobDesc +":\n"+
                   (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
-                  durationReport +
+                  "<br><br>"+ durationReport +
                   "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
                   )
 
