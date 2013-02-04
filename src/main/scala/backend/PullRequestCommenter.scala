@@ -25,11 +25,20 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
   }
 
   // TODO: only when all jobs have completed
-  def success() = {
-    val currLabelNames = ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name)
+  def checkSuccess() = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+    val pullNum = pull.number.toString
 
-    if (!currLabelNames.contains("tested"))
-      ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("tested"))
+    val commits = ghapi.pullrequestcommits(user, repo, pullNum)
+    val currLabelNames = ghapi.labels(user, repo, pullNum).map(_.name)
+    val hasTestedLabel = currLabelNames.contains("tested")
+    val success = commits.forall { c => ghapi.commitStatus(user, repo, c.sha).forall(_.success) }
+
+    if (success && !hasTestedLabel)
+      ghapi.addLabel(user, repo, pullNum, List("tested"))
+    else if (!success && hasTestedLabel)
+      ghapi.deleteLabel(user, repo, pullNum, "tested")
   }
 
 
@@ -107,6 +116,8 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
         }
 
       ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
+
+      checkSuccess()
 
       notify ! CommitDone(sha, job)
       // TODO - Can we kill ourselves now? I think so.
