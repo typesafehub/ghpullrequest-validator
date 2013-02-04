@@ -54,7 +54,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobBuilderProps: Props) extends Actor
     }
 
     val forcedJobs = rebuildCommands.map(_._1).flatten
-    rebuildCommands foreach {case (_, newBody) =>
+    rebuildCommands foreach {case (jobs, newBody) if jobs.nonEmpty =>
       ghapi.addPRComment(user, repo, pullNum, newBody)
     }
     
