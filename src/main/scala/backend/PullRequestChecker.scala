@@ -144,13 +144,11 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     def buildLog(commits: List[PRCommit]) = {
       val commitStati = commits map (c => (c, ghapi.commitStatus(user, repo, c.sha)))
 
-      jenkinsJobs.map{ j =>
-        def describe(jss: (PRCommit, List[CommitStatus])) = "  - "+ jss._1.sha.take(8)+": "+ jss._2.map(_.toString).mkString(", ")
-
-        val jobStati = commitStati.map{case (c, stati) => (c, stati.filter(_.forJob(j.name)))}.map(describe)
-
-        j.name +":\n"+ jobStati.mkString("\n")
-      }.mkString("\n\n")
+      jenkinsJobs.map { j =>
+        j.name +":\n"+ commitStati.map { case (c, sts) =>
+          "  - "+ c.sha.take(8) +": "+ sts.filter(_.forJob(j.name)).distinct.mkString(", ")
+        }.mkString("\n")
+      }.mkString("\n")
     }
 
     findNewCommands("PLS REBUILD") foreach { case (prefix, body) =>
