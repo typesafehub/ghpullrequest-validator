@@ -87,7 +87,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val success = jenkinsJobs forall (j => commitStati.map(_._2.filter(_.forJob(j.name)).headOption.map(_.success).getOrElse(false)).reduce(_ && _))
 
     if (!success)
-      log.debug("checkSuccess failed for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.mkString(", ") }.mkString("\n"))
+      log.debug("checkSuccess failed for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.distinct.mkString(", ") }.mkString("\n"))
 
     if (success && !hasTestedLabel) {
       ghapi.addLabel(user, repo, pullNum, List("tested"))
