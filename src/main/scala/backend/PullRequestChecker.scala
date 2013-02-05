@@ -174,6 +174,17 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       ghapi.addPRComment(user, repo, pullNum, prefix + buildLog(commits))
     }
 
+    findNewCommands("PLS SYNCH") map { case (prefix, body) =>
+      ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: Synchronaising! :pray:")
+      commits foreach { c =>
+        val stati = ghapi.commitStatus(user, repo, c.sha).filterNot(_.failed)
+        jenkinsJobs foreach { j =>
+          val jobStati = stati.filter(_.forJob(j.name))
+          buildCommit(c.sha, j, noop = true)
+        }
+      }
+    }
+
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha).filterNot(_.failed)
       jenkinsJobs foreach { j =>
