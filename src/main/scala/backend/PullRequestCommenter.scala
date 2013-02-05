@@ -98,12 +98,8 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             // if aborted and not rebuilt before, try rebuilding
             val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
 
-            val comment =
-              if (comments.exists(_.body.contains(SPURIOUS_REBUILD))) "Tried automatically rebuilding once before, not falling for it again!"
-              else SPURIOUS_REBUILD +" -- PLS REBUILD "+ job.name
-
-            if (!comments.exists(_.body == comment))
-              ghapi.addPRComment(user, repo, pull.number.toString, comment)
+            if (!comments.exists(_.body.contains(SPURIOUS_REBUILD)))
+              ghapi.addPRComment(user, repo, pull.number.toString, SPURIOUS_REBUILD +" -- PLS REBUILD/"+ job.name + "@"+ sha)
 
             "Build aborted."
           case _ =>
