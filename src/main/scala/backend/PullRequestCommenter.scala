@@ -84,13 +84,13 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
               ghapi.addCommitComment(user, repo, sha,
                   jobDesc +" [(results)]("+ status.url +"):\n"+
                   (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
-                  "<br><br>"+ durationReport +
+                  "<br>"+ durationReport +
                   "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
                   )
 
-            val testReport = if (failedTests.nonEmpty) (failedTests.length+ " tests failed. ") else ""
+            val testReport = if (failedTests.nonEmpty) (failedTests.length+ " failures. ") else ""
 
-            "Build failed."+ testReport + durationReport
+            " failed: "+ testReport + durationReport
 
           case "ABORTED" =>
             needsAttention()

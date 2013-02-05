@@ -305,7 +305,7 @@ object CommitStatus {
   def jobQueued(name: String) = CommitStatus(PENDING, None, Some(name +" queued."))
   def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
   def jobEnded(name: String, url: String, ok: Boolean, message: String) =
-    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name +": "+ message).take(140)))
+    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name + message).take(140)))
 }
 
 
