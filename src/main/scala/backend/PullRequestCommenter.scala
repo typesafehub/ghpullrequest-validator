@@ -14,23 +14,6 @@ import rest.github.CommitStatus
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, sha: String, notify: ActorRef) extends Actor with ActorLogging {
   val SPURIOUS_REBUILD = "SPURIOUS ABORT?"
 
-  def needsAttention() = {
-    val currLabelNames = ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name)
-
-    if (currLabelNames.contains("tested"))
-      ghapi.deleteLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, "tested")
-
-    if (!currLabelNames.contains("needs-attention"))
-      ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("needs-attention"))
-  }
-
-
-//      // purposefully only at start of line to avoid conditional LGTMs
-//      // TODO: do this on every new comment
-//      if (comments.exists(_.body.startsWith("LGTM")))
-//        ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("reviewed")) // TODO: remove when it disappears
-
-
   private val user = pull.base.repo.owner.login
   private val repo = pull.base.repo.name
 
@@ -63,8 +46,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       val message =
         status.result match {
           case "FAILURE" =>
-            needsAttention()
-
             import dispatch._
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
             val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
@@ -93,8 +74,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             " failed: "+ testReport + durationReport
 
           case "ABORTED" =>
-            needsAttention()
-
             // if aborted and not rebuilt before, try rebuilding
             val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
 
@@ -108,7 +87,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
       addStatus(CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
 
-      notify ! CommitDone(pull, sha, job)
+      notify ! CommitDone(pull, sha, job, status.result == "SUCCESS")
       // TODO - Can we kill ourselves now? I think so.
       context stop self
   }

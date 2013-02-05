@@ -11,7 +11,7 @@ import rest.github.Pull
 
 case class CheckPullRequests(username: String, project: String)
 case class CheckPullRequest(pull: Pull)
-case class CommitDone(pull: Pull, sha: String, job: JenkinsJob)
+case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean)
 
 
 /** This actor is responsible for validating that a pull request has had all required tests executed
@@ -20,7 +20,7 @@ case class CommitDone(pull: Pull, sha: String, job: JenkinsJob)
  * Note: Any job sent to this actor must support one and only one build parameter,
  * "pullrequest"
  */
-class PullRequestChecker(ghapi: GithubAPI, jobs: Set[JenkinsJob], jobBuilderProps: Props) extends Actor with ActorLogging{
+class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuilderProps: Props) extends Actor with ActorLogging{
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
   
   // cache of currently validating commits so we don't duplicate effort....
@@ -30,11 +30,46 @@ class PullRequestChecker(ghapi: GithubAPI, jobs: Set[JenkinsJob], jobBuilderProp
   
   def receive: Receive = {
     case CheckPullRequest(pull) =>
-      checkPullRequest(pull, jobs)
-    case CommitDone(pull, sha, job) =>
       checkSuccess(pull)
+      checkLGTM(pull)
+      checkPullRequest(pull)
+      // TODO: set milestone
+    case CommitDone(pull, sha, job, success) =>
+      if(success) checkSuccess(pull)
+      else needsAttention(pull)
+
       active.-=((sha, job))
       forced.-=((sha, job))
+  }
+
+  private def checkLGTM(pull: Pull) = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+    val pullNum = pull.number.toString
+    val comments = ghapi.pullrequestcomments(user, repo, pullNum)
+    val currLabelNames = ghapi.labels(user, repo, pullNum).map(_.name)
+    val reviewLabel = currLabelNames.contains("reviewed")
+
+    // purposefully only at start of line to avoid conditional LGTMs
+    val LGTMed = comments.exists(_.body.startsWith("LGTM"))
+
+    if (!reviewLabel && LGTMed)
+      ghapi.addLabel(user, repo, pullNum, List("reviewed"))
+    else if(reviewLabel && !LGTMed)
+      ghapi.deleteLabel(user, repo, pullNum, "reviewed")
+  }
+
+  private def needsAttention(pull: Pull) = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+    val pullNum = pull.number.toString
+    val currLabelNames = ghapi.labels(user, repo, pullNum).map(_.name)
+
+    if (currLabelNames.contains("tested"))
+      ghapi.deleteLabel(user, repo, pullNum, "tested")
+
+    if (!currLabelNames.contains("needs-attention"))
+      ghapi.addLabel(user, repo, pullNum, List("needs-attention"))
   }
 
   private def checkSuccess(pull: Pull) = {
@@ -48,18 +83,24 @@ class PullRequestChecker(ghapi: GithubAPI, jobs: Set[JenkinsJob], jobBuilderProp
 
     val commitStati = commits map (c => (c.sha, ghapi.commitStatus(user, repo, c.sha)))
 
-    val success = jobs forall (j => commitStati.map(_._2.filter(_.forJob(j.name)).lastOption.map(_.success).getOrElse(false)).reduce(_ && _))
+    // only look at most recent status (head of the stati)
+    val success = jenkinsJobs forall (j => commitStati.map(_._2.filter(_.forJob(j.name)).headOption.map(_.success).getOrElse(false)).reduce(_ && _))
 
-    log.debug("checkSuccess= "+ success +" for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.mkString(", ") })
+    if (!success)
+      log.debug("checkSuccess failed for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.mkString(", ") }.mkString("\n"))
 
-    if (success && !hasTestedLabel)
+    if (success && !hasTestedLabel) {
       ghapi.addLabel(user, repo, pullNum, List("tested"))
+
+      if (currLabelNames.contains("needs-attention"))
+        ghapi.deleteLabel(user, repo, pullNum, "needs-attention")
+    }
     else if (!success && hasTestedLabel)
       ghapi.deleteLabel(user, repo, pullNum, "tested")
   }
 
   // TODO - Ordering.
-  private def checkPullRequest(pull: rest.github.Pull, jenkinsJobs: Set[JenkinsJob]): Unit = {
+  private def checkPullRequest(pull: Pull): Unit = {
     val user = pull.base.repo.owner.login
     val repo = pull.base.repo.name
     val pullNum = pull.number.toString
@@ -139,7 +180,7 @@ class PullRequestChecker(ghapi: GithubAPI, jobs: Set[JenkinsJob], jobBuilderProp
         val jobStati = stati.filter(_.forJob(j.name))
         if (jobStati.isEmpty)
           buildCommit(c.sha, j)
-        else if(jobStati.last.pending)
+        else if(jobStati.head.pending)
           buildCommit(c.sha, j, noop = true)
       }
     }

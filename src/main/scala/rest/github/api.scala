@@ -99,7 +99,7 @@ trait API {
     Http(action)
   }
 
-  
+  // most recent status comes first in the resulting list!
   def commitStatus(user: String, repo: String, commitsha: String): List[CommitStatus] = {
     val url    = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
     val action = url >- parseJsonTo[List[CommitStatus]]
