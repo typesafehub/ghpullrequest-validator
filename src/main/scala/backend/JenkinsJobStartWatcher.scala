@@ -48,13 +48,15 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
       case s@(JQueue | JRetry) =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
-        if (s == JQueue)  context setReceiveTimeout (10 minutes)
+        if (s == JQueue) context setReceiveTimeout (10 minutes)
         else retryCount += 1
 
         // we haven't started our own build yet, but maybe an older one is running
         // watch its result, but still start our own
         val runningBuilds = ourJobs.filter(_.building) match {
-          case bs if bs.isEmpty => ourJobs.headOption.toSet // if no running builds, just look at the most recent one
+          case bs if bs.isEmpty =>
+            log.debug("No building jobs for "+ b.job +" #"+ b.args("pullrequest") +" commit "+ b.args("sha") +" all jobs: "+ ourJobs)
+            ourJobs.headOption.toSet // if no running builds, just look at the most recent one
           case bs => bs.toSet
         }
 
