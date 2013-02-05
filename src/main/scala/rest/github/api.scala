@@ -147,7 +147,22 @@ trait API {
     Http(action)
   }
 
+  // Create a commit comment
+  // POST /repos/:owner/:repo/commits/:sha/comments
+  def addCommitComment(user: String, repo: String, sha: String, comment: String): Comment = {
+    val url = makeAPIurl("/repos/%s/%s/commits/%s/comments" format (user, repo, sha))
+    val json = IssueComment(comment).toJson
+    val action = (url.POST << json >- parseJsonTo[Comment])
+    Http(action)
+  }
 
+  // List comments for a single commit
+  // GET /repos/:owner/:repo/commits/:sha/comments
+  def commitComments(user: String, repo: String, sha: String): List[Comment] = {
+    val url = makeAPIurl("/repos/%s/%s/commits/%s/comments" format (user,repo,sha))
+    val action = url >- parseJsonTo[List[Comment]]
+    Http(action)
+  }
 }
 
 object API {
