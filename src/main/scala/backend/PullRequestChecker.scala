@@ -187,10 +187,11 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       val stati = ghapi.commitStatus(user, repo, c.sha).filterNot(_.failed)
       jenkinsJobs foreach { j =>
         val jobStati = stati.filter(_.forJob(j.name))
-        if (jobStati.isEmpty)
-          buildCommit(c.sha, j)
-        else if(jobStati.head.pending)
-          buildCommit(c.sha, j, noop = true)
+
+        // if all jobs have failed --> retry for sure
+        // if there's a pending job --> must run with noop since otherwise we'd keep launching new jobs
+        if (jobStati.isEmpty || jobStati.head.pending)
+          buildCommit(c.sha, j, noop = jobStati.nonEmpty)
       }
     }
   }

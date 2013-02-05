@@ -48,26 +48,33 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
           case "FAILURE" =>
             import dispatch._
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
-            val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
+            val (logLines, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
             val failedTests =
-              if (log.exists(_.contains("test.suite"))) {
-                log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
+              if (logLines.exists(_.contains("test.suite"))) {
+                logLines.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
               } else Nil
 
             val jobDesc = "Job "+ job.name +" failed for "+ sha.take(8)
 
-            val commitComments = ghapi.commitComments(user, repo, sha)
+            val message = jobDesc +" [(results)]("+ status.url +"):\n"+
+              (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
+              "<br>"+ durationReport +
+              "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
 
-            // comment anyway because github only looks at last commit to determine merge status
-            // TODO: why do we double-comment?
-            if (!commitComments.exists(_.body.startsWith(jobDesc)))
-              ghapi.addCommitComment(user, repo, sha,
-                  jobDesc +" [(results)]("+ status.url +"):\n"+
-                  (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
-                  "<br>"+ durationReport +
-                  "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
-                  )
+            log.debug("Failed: "+ message)
+
+            try {
+              val commitComments = ghapi.commitComments(user, repo, sha)
+
+              // comment anyway because github only looks at last commit to determine merge status
+              // TODO: why do we double-comment?
+              if (!commitComments.exists(_.body.startsWith(jobDesc)))
+                ghapi.addCommitComment(user, repo, sha, message)
+            } catch {
+              case s: dispatch.StatusCode =>
+                log.debug("HTTP error "+ s)
+            }
 
             val testReport = if (failedTests.nonEmpty) (failedTests.length+ " failures. ") else ""
 
