@@ -1,13 +1,7 @@
 package rest
 package github
 
-import dispatch.{Http => LoggingHttp, _}
-
-/** May be used directly from any thread. */
-import org.apache.http.auth.AuthScope
-object Http extends LoggingHttp with NoLogging with thread.Safety  {
-  type CurrentCredentials = util.DynamicVariable[Option[(AuthScope, Credentials)]]
-}
+import dispatch.{Http => _, _}
 
 object Authenticate {
   val USER_AGENT = "github.com/typesafehub/ghpullrequest-validator; thanks for breaking me again, github"

@@ -1,16 +1,10 @@
 package rest
 package jenkins
 
-import dispatch.{Http => LoggingHttp, _}
+import dispatch.{Http => _, _}
 import net.liftweb.json.{ DefaultFormats, Formats }
 import net.liftweb.json.JsonParser._
 import backend.JenkinsJob
-
-/** May be used directly from any thread. */
-import org.apache.http.auth.AuthScope
-object Http extends LoggingHttp with NoLogging with thread.Safety  {
-  type CurrentCredentials = util.DynamicVariable[Option[(AuthScope, Credentials)]]
-}
 
 /**
  * An API class to connect to jenkins and do stuff.
