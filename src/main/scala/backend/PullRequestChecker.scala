@@ -146,8 +146,8 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
       jenkinsJobs.map { j =>
         j.name +":\n"+ commitStati.map { case (c, sts) =>
-          "  - "+ c.sha.take(8) +": "+ sts.filter(_.forJob(j.name)).distinct.mkString(", ")
-        }.mkString("\n")
+          "  - "+ c.sha.take(8) +": "+ sts.filter(_.forJob(j.name)).distinct.map(_.toString.replace(j.name, "")).mkString(", ")
+        }.mkString("\n")+"\n"
       }.mkString("\n")
     }
 
