@@ -268,13 +268,13 @@ case class CommitStatus(
   // User defined
   state: String,
   target_url: Option[String]=None,
-  description: Option[String]=None,
-  // Github Added
-  id: Option[String] = None,
-  created_at: Option[String]=None,
-  updated_at: Option[String]=None,
-  url: Option[String]=None,
-  creator: Option[User]=None) {
+  description: Option[String]=None) {
+//  // Github Added
+//  id: Option[String] = None,
+//  created_at: Option[String]=None,
+//  updated_at: Option[String]=None,
+//  url: Option[String]=None,
+//  creator: Option[User]=None) {
   def toJson = makeJson(this)
 
   import CommitStatus._
@@ -291,10 +291,6 @@ case class CommitStatus(
   def failed  = state == FAILURE
 
   override def toString = (if (target_url.nonEmpty) "["+state+"]("+ target_url.get +")" else state)+ description.getOrElse("")
-  override def equals(x: Any) = x match {
-    case CommitStatus(`state`, `target_url`, `description`, _, _, _, _, _) => true
-    case _ => false
-  }
 }
 object CommitStatus {
   final val PENDING = "pending"
