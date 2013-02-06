@@ -299,6 +299,11 @@ case class CommitStatus(
   // jenkins job found an error
   def error   = state == ERROR
 
+  // we don't add a SUCCESS job when there's other pending jobs waiting
+  // we add a PENDING job with a description like "$job OK $message"
+  def fakePending = pending && description.flatMap(_.split(" ", 3).toList.drop(1).take(1).headOption).exists(_ == FAKE_PENDING)
+  def done    = success || error || fakePending
+
   // something went wrong
   def failed  = state == FAILURE
 
@@ -310,10 +315,18 @@ object CommitStatus {
   final val ERROR = "error"
   final val FAILURE = "failure"
 
+  // to distinguish PENDING jobs that are done but waiting on other PENDING jobs from truly pending jobs
+  // the message of other PENDING jobs should never start with "$job OK"
+  final val FAKE_PENDING = "OK"
+
+  // TODO: assert(!name.contains(" ")) for all job* methods below
   def jobQueued(name: String) = CommitStatus(PENDING, None, Some(name +" queued."))
   def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
   def jobEnded(name: String, url: String, ok: Boolean, message: String) =
     CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name + message).take(140)))
+  def jobEndedBut(name: String, url: String, message: String) =
+    CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
+
 }
 
 

@@ -92,20 +92,20 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             durationReport
         }
 
-      val newStatus = CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message)
-      addStatus(newStatus)
-
       // avoid false positives when a faster job completes successfully before a longer-running job has a chance to indicate failure
-      // by prepending the pending status of other jobs that have a pending status but no final result
-      if (newStatus.success) {
-        val otherPendingStati = ghapi.commitStatus(user, repo, sha).filterNot(st => st.forJob(job.name))
-        otherPendingStati.groupBy(_.job.getOrElse("")) foreach { case (job, stati) =>
-          if (stati.nonEmpty && stati.forall(st => st.pending || st.failed)) {
-            log.debug("promoting straggler status: "+ stati.head +" to catch up with "+ newStatus)
-            ghapi.setCommitStatus(user, repo, sha, stati.head)
+      val newStatus =
+        if (status.result == "SUCCESS") {
+          val others = ghapi.commitStatus(user, repo, sha).filterNot(_.forJob(job.name))
+          val stillRunning = others.groupBy(_.job.getOrElse("")) collect {
+            case (job, stati) if !stati.exists(_.done) => job
           }
+          if (stillRunning.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
+          else CommitStatus.jobEndedBut(job.name, status.url, message+ stillRunning.mkString("(but waiting for ", ", ", ")."))
+        } else {
+          CommitStatus.jobEnded(job.name, status.url, false, message)
         }
-      }
+
+      addStatus(newStatus)
 
       notify ! CommitDone(pull, sha, job, status.result == "SUCCESS")
       // TODO - Can we kill ourselves now? I think so.
