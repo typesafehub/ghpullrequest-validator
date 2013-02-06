@@ -27,7 +27,7 @@ class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor with ActorLogging {
       context actorOf Props(new JenkinsJobStartWatcher(api, build, me))
 
     case JobStarted(build, status) =>
-      log.debug("Job started: " + build.job.name + "-" + status.number)
+      log.debug("Job started: " + build.job.name + "-" + status.url)
       context.actorOf(
           Props(new JenkinsJobWatcher(api, build, status.number))) // , build.job.name + "-" + status.number <-- not unique, not needed?
   }

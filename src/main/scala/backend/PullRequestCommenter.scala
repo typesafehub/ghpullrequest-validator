@@ -57,7 +57,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
             val jobDesc = "Job "+ job.name +" failed for "+ sha.take(8)
 
-            val message = jobDesc +" [(results)]("+ status.url +"):\n"+
+            val message = jobDesc +" of #"+ pull.number +" [(results)]("+ status.url +"):\n"+
               (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
               "<br>"+ durationReport +
               "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
