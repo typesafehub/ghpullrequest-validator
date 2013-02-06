@@ -329,6 +329,8 @@ object CommitStatus {
   def jobEndedBut(name: String, url: String, message: String) =
     CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
 
+  // allowing for st.done for robustness, in principle it shouldn't happen but it doesn't hurt
+  def allDone(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.done).getOrElse(false)
 }
 
 

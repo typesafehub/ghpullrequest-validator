@@ -95,8 +95,10 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
     val commitStati = commits map (c => (c.sha, ghapi.commitStatus(user, repo, c.sha)))
 
-    // only look at most recent status (head of the stati)
-    val success = jenkinsJobs forall (j => commitStati.map(_._2.filter(_.forJob(j.name)).headOption.map(_.success).getOrElse(false)).reduce(_ && _))
+    // only look at most recent status (head of the stati) -- if it's either success
+    // .... or done (in principle it shouldn't happen that there's a mix of only _.done and _.success,
+    // but due to a bug that's now fixed some stati are messed up like that, and if all jobs are done || success, it's ok for sure)
+    val success = jenkinsJobs forall (j => commitStati.map{case (_, cs) => CommitStatus.allDone(cs.filter(_.forJob(j.name)))}.reduce(_ && _))
 
     if (!success)
       log.debug("checkSuccess failed for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.distinct.mkString(", ") }.mkString("\n"))
