@@ -1,90 +1,72 @@
 package backend
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props, ActorLogging, ReceiveTimeout}
-import rest.jenkins.{API => JenkinsAPI}
+import akka.actor.{ Actor, ActorRef, ActorSystem, Props, ActorLogging, ReceiveTimeout }
+import rest.jenkins.{ API => JenkinsAPI }
 import akka.util.duration._
 import rest.jenkins.BuildStatus
 
-
-
 /** A class that watches for a job to begin on jenkins and then
- * notifies the jenkinsService that the job has started.
+ *  notifies the jenkinsService that the job has started.
  */
 // TODO - We need a new way to detect a job has started...
 class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: ActorRef) extends Actor with ActorLogging {
-  // TODO - Use better time library....
-
   // Set timeout to check when the job has started.
-  context setReceiveTimeout (30 seconds)
+  context setReceiveTimeout (1 minute)
 
-  private[this] var retryCount = 0
-  private val MAX_RETRIES = 10
+  private val seenBuilds = collection.mutable.HashSet[String]()
+  // we only try to start a build once, if that fails, we'll time out and try again
+  private var startedBuild = false
 
-  sealed abstract class JenkinsStatus
-  case object JQueue extends JenkinsStatus
-  case object JRetry extends JenkinsStatus
-  case object JStop  extends JenkinsStatus
-  def jenkinsStatus: JenkinsStatus =
-    api.jobInfo(b.job).queueItem match {
-      // there's a queue, be patient as jenkins doesn't tell us about queued jobs
-      case Some(rest.jenkins.QueueItem(true)) =>
-//        log.debug("Retrying -- queue "+ b.job +" #"+ b.args.get("pullrequest"))
-        JQueue
-      // no queue, if don't start finding it by now, something went wrong
-      case _ =>
-//        log.debug("Retrying -- no queue for "+ b.job +" #"+ b.args.get("pullrequest"))
-        if (retryCount < MAX_RETRIES) JRetry else JStop
-    }
+  def receive: Receive = {
+    case ReceiveTimeout =>
+      // jobs for this PR, sha, mergebranch (all params must match)
+      val ourJobs = api.buildStatusForJob(b.job).filter { status =>
+        val paramsForOurArgs = status.actions.parameters.collect {
+          case rest.jenkins.Param(n, v) if b.args.isDefinedAt(n) => (n, v)
+        }.toMap
 
-  private val knownRunning = collection.mutable.HashSet[String]()
+        paramsForOurArgs == b.args
+      }
 
-  def receive: Receive = { case ReceiveTimeout =>
-    jenkinsStatus match {
-      case JStop =>
-        log.debug("Timed out finding build "+ (b.job, b.args.get("pullrequest"), api.jobInfo(b.job)))
-        jenkinsService ! b // tell the service to rebuild
-        context stop self // stop looking for the job to start
+      // where's our build? if there are building jobs, look at those
+      // if not, shift our gaze to queued or finished jobs
+      val relevantBuilds = ourJobs.filter(_.building) match {
+        case bs if bs.isEmpty =>
+          log.debug("No building jobs for " + b.job + " #" + b.args("pullrequest") + " commit " + b.args("sha") + " all jobs: " + ourJobs)
+          ourJobs.headOption.toSet // if no running builds, just look at the most recent one
+        case bs => bs.toSet
+      }
 
-      case s@(JQueue | JRetry) =>
-        // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
-        if (s == JQueue) context setReceiveTimeout (10 minutes)
-        else retryCount += 1
+      val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
 
-        // we haven't started our own build yet, but maybe an older one is running
-        // watch its result, but still start our own
-        val runningBuilds = ourJobs.filter(_.building) match {
-          case bs if bs.isEmpty => ourJobs.headOption.toSet // if no running builds, just look at the most recent one
-          case bs => bs.toSet
+      val (buildingOrQueued, done) = newlyDiscovered.partition(st => st.building || st.queued)
+
+      buildingOrQueued foreach { status =>
+        if (status.queued)
+          b.commenter ! BuildQueued
+        else {
+          jenkinsService ! JobStarted(b, status)
+          b.commenter ! BuildStarted(status.url)
         }
+      }
 
-        val newlyDiscovered = runningBuilds.filterNot(bs => knownRunning(bs.url))
+      // done after sending BuildStarted so that (hopefully) this status is more recent
+      done foreach { status =>
+        b.commenter ! BuildResult(status)
+      }
 
-          newlyDiscovered.foreach { status =>
-            if (status.building) {
-              jenkinsService ! JobStarted(b, status)
-              b.commenter ! BuildStarted(status.url)
-            } else {
-              b.commenter ! BuildResult(status)
-            }
-          }
+      seenBuilds ++= newlyDiscovered.map(_.url)
 
-        knownRunning ++= newlyDiscovered.map(_.url)
+      val canStop = startedBuild || !b.force
+      def foundRunningJob = newlyDiscovered.exists(!_.queued)
+      def isQueued = newlyDiscovered.exists(_.queued)
 
-        // if there's a running job for this commit and this job, that's good enough (unless we encountered an explicit PLS REBUILD --> b.force)
-        if (b.noop || (newlyDiscovered.nonEmpty && !b.force)) context stop self
-        else if (s != JQueue) { // essentially duplicating jenkins' queue because it sucks (can't discover jobs)
-          api.buildJob(b.job, b.args)
-          log.debug("Started job for #"+ b.args.get("pullrequest") +" --> "+ b.job.name +" args: "+ b.args)
-          context setReceiveTimeout (1 minutes)
-        }
-
-    }
+      if (canStop && foundRunningJob) context stop self
+      else if (!b.noop && !startedBuild && !isQueued) {
+        startedBuild = true
+        api.buildJob(b.job, b.args)
+        log.debug("Started job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+      }
   }
-
-  
-  def ourJobs =
-    api.buildStatusForJob(b.job).filter { status =>
-      status.actions.parameters.collect{case rest.jenkins.Param(n, v) if b.args.isDefinedAt(n) => (n, v)}.toMap == b.args
-    }
 
 }

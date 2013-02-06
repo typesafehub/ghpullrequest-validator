@@ -18,9 +18,9 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor with Ac
   val listener = context actorOf listenerProps
   
   def receive: Receive = {
-    case CheckPullRequests(user, proj, jobs) =>
+    case CheckPullRequests(user, proj) =>
       initLabels(user, proj)
-      checkPullRequests(user, proj, jobs)
+      checkPullRequests(user, proj)
   }
   
   private def initLabels(ghuser: String, ghproject: String) = {
@@ -38,11 +38,21 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor with Ac
     }
   }
 
-  private def checkPullRequests(ghuser: String, ghproject: String, jobs: Set[JenkinsJob]): Unit = 
+  private def branchToMilestone(user: String, repo: String): Map[String, rest.github.Milestone] = {
+    val miles = ghapi.repoMilestones(user, repo) // gets all open milestones
+    log.debug("milestones: "+ miles)
+    val branchToMS = miles.flatMap(m => m.mergeBranch.map((_, m))).toMap
+    log.debug("branchToMS: "+ branchToMS)
+    branchToMS
+  }
+
+  private def checkPullRequests(ghuser: String, ghproject: String): Unit = {
+    val b2ms = branchToMilestone(ghuser, ghproject)
     // TODO - cull pull requests that haven't changed since the last time we checked....
     for {
       p <- ghapi.pullrequests(ghuser, ghproject)
       pull <- catching(classOf[Exception]) opt 
                  ghapi.pullrequest(ghuser, ghproject, p.number.toString)
-    } listener ! CheckPullRequest(pull, jobs)
+    } listener ! CheckPullRequest(pull, b2ms)
+  }
 }

@@ -14,47 +14,24 @@ import rest.github.CommitStatus
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, sha: String, notify: ActorRef) extends Actor with ActorLogging {
   val SPURIOUS_REBUILD = "SPURIOUS ABORT?"
 
-  def needsAttention() = {
-    val currLabelNames = ghapi.labels(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString).map(_.name)
-
-    if (currLabelNames.contains("tested"))
-      ghapi.deleteLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, "tested")
-
-    if (!currLabelNames.contains("needs-attention"))
-      ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("needs-attention"))
-  }
-
-  // TODO: only when all jobs have completed
-  def checkSuccess() = {
-    val user = pull.base.repo.owner.login
-    val repo = pull.base.repo.name
-    val pullNum = pull.number.toString
-
-    val commits = ghapi.pullrequestcommits(user, repo, pullNum)
-    val currLabelNames = ghapi.labels(user, repo, pullNum).map(_.name)
-    val hasTestedLabel = currLabelNames.contains("tested")
-    val success = commits.forall { c => ghapi.commitStatus(user, repo, c.sha).forall(_.success) }
-
-    if (success && !hasTestedLabel)
-      ghapi.addLabel(user, repo, pullNum, List("tested"))
-    else if (!success && hasTestedLabel)
-      ghapi.deleteLabel(user, repo, pullNum, "tested")
-  }
-
-
-//      // purposefully only at start of line to avoid conditional LGTMs
-//      // TODO: do this on every new comment
-//      if (comments.exists(_.body.startsWith("LGTM")))
-//        ghapi.addLabel(pull.base.repo.owner.login, pull.base.repo.name, pull.number.toString, List("reviewed")) // TODO: remove when it disappears
-
-
   private val user = pull.base.repo.owner.login
   private val repo = pull.base.repo.name
 
+  def addStatus(status: CommitStatus) = {
+    if (!ghapi.commitStatus(user, repo, sha).contains(status)) {
+      log.debug("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
+
+      ghapi.setCommitStatus(user, repo, sha, status)
+    } else
+      log.debug("Already set status " + status.state + " for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
+  }
 
   def receive: Receive = {
+    case BuildQueued =>
+      addStatus(CommitStatus.jobQueued(job.name))
+
     case BuildStarted(url) =>
-      ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobStarted(job.name, url))
+      addStatus(CommitStatus.jobStarted(job.name, url))
 
     case BuildResult(status) =>
       def cleanPartestLine(line: String) = ("  - " + {
@@ -69,58 +46,69 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       val message =
         status.result match {
           case "FAILURE" =>
-            needsAttention()
-
             import dispatch._
             val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
-            val (log, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
+            val (logLines, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
             val failedTests =
-              if (log.exists(_.contains("test.suite"))) {
-                log.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
+              if (logLines.exists(_.contains("test.suite"))) {
+                logLines.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
               } else Nil
 
             val jobDesc = "Job "+ job.name +" failed for "+ sha.take(8)
 
-            val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
+            val message = jobDesc +" [(results)]("+ status.url +"):\n"+
+              (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
+              "<br>"+ durationReport +
+              "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)" +
+              """<br> to rebuild, comment "PLS REBUILD/"""+ job.name + "@"+ sha+ """"on PR #"""+ pull.number
 
-            // comment anyway because github only looks at last commit to determine merge status
-            // TODO: why do we double-comment?
-            if (!comments.exists(_.body.startsWith(jobDesc)))
-              ghapi.addPRComment(user, repo, pull.number.toString,
-                  jobDesc +" [(results)]("+ status.url +"):\n"+
-                  (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
-                  "<br><br>"+ durationReport +
-                  "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)"
-                  )
+            log.debug("Failed: "+ message)
 
-            val testReport = if (failedTests.nonEmpty) (failedTests.length+ " tests failed. ") else ""
+            try {
+              val commitComments = ghapi.commitComments(user, repo, sha)
 
-            "Build failed."+ testReport + durationReport
+              // comment anyway because github only looks at last commit to determine merge status
+              // TODO: why do we double-comment?
+              if (!commitComments.exists(_.body.startsWith(jobDesc)))
+                ghapi.addCommitComment(user, repo, sha, message)
+            } catch {
+              case s: dispatch.StatusCode =>
+                log.debug("HTTP error "+ s)
+            }
+
+            val testReport = if (failedTests.nonEmpty) (failedTests.length+ " failures. ") else ""
+
+            " failed: "+ testReport + durationReport
 
           case "ABORTED" =>
-            needsAttention()
-
             // if aborted and not rebuilt before, try rebuilding
             val comments = ghapi.pullrequestcomments(user, repo, pull.number.toString)
 
-            val comment =
-              if (comments.exists(_.body.contains(SPURIOUS_REBUILD))) "Tried automatically rebuilding once before, not falling for it again!"
-              else SPURIOUS_REBUILD +" -- PLS REBUILD "+ job.name
-
-            if (!comments.exists(_.body == comment))
-              ghapi.addPRComment(user, repo, pull.number.toString, comment)
+            if (!comments.exists(_.body.contains(SPURIOUS_REBUILD)))
+              ghapi.addPRComment(user, repo, pull.number.toString, SPURIOUS_REBUILD +" -- PLS REBUILD/"+ job.name + "@"+ sha)
 
             "Build aborted."
           case _ =>
             durationReport
         }
 
-      ghapi.setCommitStatus(user, repo, sha, CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
+      // avoid false positives when a faster job completes successfully before a longer-running job has a chance to indicate failure
+      val newStatus =
+        if (status.result == "SUCCESS") {
+          val others = ghapi.commitStatus(user, repo, sha).filterNot(_.forJob(job.name))
+          val stillRunning = others.groupBy(_.job.getOrElse("")) collect {
+            case (job, stati) if !stati.exists(_.done) => job
+          }
+          if (stillRunning.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
+          else CommitStatus.jobEndedBut(job.name, status.url, message+ stillRunning.mkString("(but waiting for ", ", ", ")."))
+        } else {
+          CommitStatus.jobEnded(job.name, status.url, false, message)
+        }
 
-      checkSuccess()
+      addStatus(newStatus)
 
-      notify ! CommitDone(sha, job)
+      notify ! CommitDone(pull, sha, job, status.result == "SUCCESS")
       // TODO - Can we kill ourselves now? I think so.
       context stop self
   }

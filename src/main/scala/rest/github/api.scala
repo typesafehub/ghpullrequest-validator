@@ -1,7 +1,7 @@
 package rest
 package github
 
-import dispatch._
+import dispatch.{Http => _, _}
 
 object Authenticate {
   val USER_AGENT = "github.com/typesafehub/ghpullrequest-validator; thanks for breaking me again, github"
@@ -93,7 +93,7 @@ trait API {
     Http(action)
   }
 
-  
+  // most recent status comes first in the resulting list!
   def commitStatus(user: String, repo: String, commitsha: String): List[CommitStatus] = {
     val url    = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
     val action = url >- parseJsonTo[List[CommitStatus]]
@@ -141,7 +141,38 @@ trait API {
     Http(action)
   }
 
+  // Create a commit comment
+  // POST /repos/:owner/:repo/commits/:sha/comments
+  def addCommitComment(user: String, repo: String, sha: String, comment: String): Comment = {
+    val url = makeAPIurl("/repos/%s/%s/commits/%s/comments" format (user, repo, sha))
+    val json = IssueComment(comment).toJson
+    val action = (url.POST << json >- parseJsonTo[Comment])
+    Http(action)
+  }
 
+  // List comments for a single commit
+  // GET /repos/:owner/:repo/commits/:sha/comments
+  def commitComments(user: String, repo: String, sha: String): List[Comment] = {
+    val url = makeAPIurl("/repos/%s/%s/commits/%s/comments" format (user,repo,sha))
+    val action = url >- parseJsonTo[List[Comment]]
+    Http(action)
+  }
+
+  //  GET /repos/:owner/:repo/milestones
+  def repoMilestones(user: String, repo: String, state: String = "open"): List[Milestone] = {
+    val url = makeAPIurl("/repos/%s/%s/milestones?state=%s" format (user, repo, state))
+    val action = (url >- parseJsonTo[List[Milestone]])
+    Http(action)
+  }
+
+  // PATCH /repos/:owner/:repo/issues/:number
+  def setMilestone(user: String, repo: String, number: String, milestone: Int) = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s" format (user, repo, number))
+    import net.liftweb.json._
+
+    val action = (url.copy(method="PATCH") << makeJson(JObject(List(JField("milestone", JInt(milestone))))) >| )
+    Http(action)
+  }
 }
 
 object API {
@@ -247,16 +278,18 @@ case class CommitStatus(
   // User defined
   state: String,
   target_url: Option[String]=None,
-  description: Option[String]=None,
-  // Github Added
-  id: Option[String] = None,
-  created_at: Option[String]=None,
-  updated_at: Option[String]=None,
-  url: Option[String]=None,
-  creator: Option[User]=None) {
+  description: Option[String]=None) {
+//  // Github Added
+//  id: Option[String] = None,
+//  created_at: Option[String]=None,
+//  updated_at: Option[String]=None,
+//  url: Option[String]=None,
+//  creator: Option[User]=None) {
   def toJson = makeJson(this)
 
   import CommitStatus._
+
+  def job = description.flatMap(_.split(" ").headOption)
 
   def forJob(job: String) = description match { case Some(s) if s.startsWith(job) => true case _ => false }
   // jenkins job is running
@@ -266,8 +299,15 @@ case class CommitStatus(
   // jenkins job found an error
   def error   = state == ERROR
 
+  // we don't add a SUCCESS job when there's other pending jobs waiting
+  // we add a PENDING job with a description like "$job OK $message"
+  def fakePending = pending && description.flatMap(_.split(" ", 3).toList.drop(1).take(1).headOption).exists(_ == FAKE_PENDING)
+  def done    = success || error || fakePending
+
   // something went wrong
   def failed  = state == FAILURE
+
+  override def toString = (if (target_url.nonEmpty) "["+state+"]("+ target_url.get +")" else state) +": "+ description.getOrElse("")
 }
 object CommitStatus {
   final val PENDING = "pending"
@@ -275,9 +315,18 @@ object CommitStatus {
   final val ERROR = "error"
   final val FAILURE = "failure"
 
+  // to distinguish PENDING jobs that are done but waiting on other PENDING jobs from truly pending jobs
+  // the message of other PENDING jobs should never start with "$job OK"
+  final val FAKE_PENDING = "OK"
+
+  // TODO: assert(!name.contains(" ")) for all job* methods below
+  def jobQueued(name: String) = CommitStatus(PENDING, None, Some(name +" queued."))
   def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
   def jobEnded(name: String, url: String, ok: Boolean, message: String) =
-    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name +": "+ message).take(140)))
+    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name + message).take(140)))
+  def jobEndedBut(name: String, url: String, message: String) =
+    CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
+
 }
 
 
@@ -294,4 +343,31 @@ case class Label(name: String, color: String = "FFFFFF", url: Option[String] = N
     case Label(`name`, `color`, _) => true
     case _ => false
   }
+}
+
+// {
+//    "url": "https://api.github.com/repos/octocat/Hello-World/milestones/1",
+//    "number": 1,
+//    "state": "open",
+//    "title": "v1.0",
+//    "description": "",
+//    "creator": {
+//      "login": "octocat",
+//      "id": 1,
+//      "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+//      "gravatar_id": "somehexcode",
+//      "url": "https://api.github.com/users/octocat"
+//    },
+//    "open_issues": 4,
+//    "closed_issues": 8,
+//    "created_at": "2011-04-10T20:09:31Z",
+//    "due_on": null
+//  }
+//]
+case class Milestone(number: Int, title: String, description: String) {
+  // don't know how to ignore the trailing dot using java regexes, so using stripFinalDot...
+  private val regex = "Merge to (\\S*)".r
+  private def stripFinalDot(s: String) = (if(s.nonEmpty && s.last == '.') s.init else s).trim
+
+  def mergeBranch = regex.findFirstMatchIn(description).flatMap(m => m.subgroups.headOption.map(stripFinalDot))
 }

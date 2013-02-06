@@ -81,7 +81,7 @@ class BackendStoreActor extends Actor {
     backends getOrElse(hashConfig(c), {
       val japi = rest.jenkins.API(c.jenkinsUrl, Some(c.jenkinsUser.user -> c.jenkinsUser.pw))
       val ghapi = rest.github.API.fromUser(c.githubUser.user, c.githubUser.pw)
-      val backend = Backend(ghapi, japi, context)
+      val backend = Backend(ghapi, japi, c.jenkinsJobs, context)
       backends += (hashConfig(c) -> backend)
       backend
     })
@@ -96,7 +96,7 @@ class BackendStoreActor extends Actor {
     for {
       config <- configs.valuesIterator
       backend = backendFor(config)
-    } backend.checkPullRequestsOnSystem(config.project.user, config.project.project, config.jenkinsJobs)
+    } backend.checkPullRequestsOnSystem(config.project.user, config.project.project)
   }
 }
 
