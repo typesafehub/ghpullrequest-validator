@@ -157,6 +157,22 @@ trait API {
     val action = url >- parseJsonTo[List[Comment]]
     Http(action)
   }
+
+  //  GET /repos/:owner/:repo/milestones
+  def repoMilestones(user: String, repo: String, state: String = "open"): List[Milestone] = {
+    val url = makeAPIurl("/repos/%s/%s/milestones?state=%s" format (user, repo, state))
+    val action = (url >- parseJsonTo[List[Milestone]])
+    Http(action)
+  }
+
+  // PATCH /repos/:owner/:repo/issues/:number
+  def setMilestone(user: String, repo: String, number: String, milestone: Int) = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s" format (user, repo, number))
+    import net.liftweb.json._
+
+    val action = (url.copy(method="PATCH") << makeJson(JObject(List(JField("milestone", JInt(milestone))))) >| )
+    Http(action)
+  }
 }
 
 object API {
@@ -312,4 +328,31 @@ case class Label(name: String, color: String = "FFFFFF", url: Option[String] = N
     case Label(`name`, `color`, _) => true
     case _ => false
   }
+}
+
+// {
+//    "url": "https://api.github.com/repos/octocat/Hello-World/milestones/1",
+//    "number": 1,
+//    "state": "open",
+//    "title": "v1.0",
+//    "description": "",
+//    "creator": {
+//      "login": "octocat",
+//      "id": 1,
+//      "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+//      "gravatar_id": "somehexcode",
+//      "url": "https://api.github.com/users/octocat"
+//    },
+//    "open_issues": 4,
+//    "closed_issues": 8,
+//    "created_at": "2011-04-10T20:09:31Z",
+//    "due_on": null
+//  }
+//]
+case class Milestone(number: Int, title: String, description: String) {
+  // don't know how to ignore the trailing dot using java regexes, so using stripFinalDot...
+  private val regex = "Merge to (\\S*)".r
+  private def stripFinalDot(s: String) = (if(s.nonEmpty && s.last == '.') s.init else s).trim
+
+  def mergeBranch = regex.findFirstMatchIn(description).flatMap(m => m.subgroups.headOption.map(stripFinalDot))
 }

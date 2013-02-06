@@ -10,7 +10,7 @@ import rest.github.Pull
 
 
 case class CheckPullRequests(username: String, project: String)
-case class CheckPullRequest(pull: Pull)
+case class CheckPullRequest(pull: Pull, branchToMS: Map[String, rest.github.Milestone])
 case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean)
 
 
@@ -29,17 +29,29 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
   
   
   def receive: Receive = {
-    case CheckPullRequest(pull) =>
-      checkSuccess(pull)
+    case CheckPullRequest(pull, branchToMS) =>
+      checkMilestone(pull, branchToMS)
       checkLGTM(pull)
       checkPullRequest(pull)
-      // TODO: set milestone
+      checkSuccess(pull)
     case CommitDone(pull, sha, job, success) =>
       if(success) checkSuccess(pull)
       else needsAttention(pull)
 
       active.-=((sha, job))
       forced.-=((sha, job))
+  }
+
+  // if there's a milestone with description "Merge to ${pull.base.ref}.", set it as the PR's milestone
+  private def checkMilestone(pull: Pull, branchToMS: Map[String, rest.github.Milestone]) = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+    val pullNum = pull.number.toString
+
+    branchToMS get(pull.base.ref) foreach { milestone =>
+      log.debug("Setting milestone of #"+ pullNum +" to "+ milestone.title)
+      ghapi.setMilestone(user, repo, pullNum, milestone.number)
+    }
   }
 
   private def checkLGTM(pull: Pull) = {
