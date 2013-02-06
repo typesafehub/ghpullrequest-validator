@@ -289,6 +289,8 @@ case class CommitStatus(
 
   import CommitStatus._
 
+  def job = description.flatMap(_.split(" ").headOption)
+
   def forJob(job: String) = description match { case Some(s) if s.startsWith(job) => true case _ => false }
   // jenkins job is running
   def pending = state == PENDING

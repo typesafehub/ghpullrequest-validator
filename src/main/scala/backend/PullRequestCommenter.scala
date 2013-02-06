@@ -92,7 +92,18 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             durationReport
         }
 
-      addStatus(CommitStatus.jobEnded(job.name, status.url, status.result == "SUCCESS", message))
+      val ok = status.result == "SUCCESS"
+      addStatus(CommitStatus.jobEnded(job.name, status.url, ok, message))
+
+      // avoid false positives when a faster job completes successfully before a longer-running job has a chance to indicate failure
+      // by prepending the pending status of other jobs that have a pending status but no final result
+      if (ok) {
+        val otherPendingStati = ghapi.commitStatus(user, repo, sha).filterNot(st => st.forJob(job.name))
+        otherPendingStati.groupBy(_.job.getOrElse("")) foreach { case (job, stati) =>
+          if (stati.nonEmpty && stati.forall(st => st.pending || st.failed))
+            ghapi.setCommitStatus(user, repo, sha, stati.head)
+        }
+      }
 
       notify ! CommitDone(pull, sha, job, status.result == "SUCCESS")
       // TODO - Can we kill ourselves now? I think so.
