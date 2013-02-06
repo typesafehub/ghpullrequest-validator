@@ -35,11 +35,7 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
 
   /** A traversable that lazily pulls build status information from jenkins. */
   def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = {
-    def jobInfo(job: JenkinsJob): Job = {
-      val loc = makeReq("job/%s/api/json" format (job.name))
-      Http(loc >- parseJsonTo[Job])
-    }
-    val info = jobInfo(job)
+    val info = Http(makeReq("job/%s/api/json" format (job.name)) >- parseJsonTo[Job])
     val reportedBuilds = info.builds.sorted
 
     // hack: retrieve queued jobs from queue/api/json
