@@ -301,7 +301,9 @@ case class CommitStatus(
 
   // we don't add a SUCCESS job when there's other pending jobs waiting
   // we add a PENDING job with a description like "$job OK $message"
-  def fakePending = pending && description.flatMap(_.split(" ", 3).toList.drop(1).take(1).headOption).exists(_ == FAKE_PENDING)
+  def fakePending = {
+    pending && description.flatMap(_.split(" ", 3).toList.drop(1).take(1).headOption).exists(_ == FAKE_PENDING)
+  }
   def done    = success || error || fakePending
 
   // something went wrong
