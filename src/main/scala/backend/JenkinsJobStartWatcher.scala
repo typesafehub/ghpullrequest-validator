@@ -37,7 +37,9 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
     }
 
   private val knownRunning = collection.mutable.HashSet[String]()
-  private var notifiedCommenter = false
+  private var notifiedCommenter = false // did we add a dummy BuildQueued?
+  // we only try to start a build once, if that fails, we'll time out and try again
+  private var startedBuild = false
 
   def receive: Receive = { case ReceiveTimeout =>
     jenkinsStatus match {
@@ -48,43 +50,52 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
       case s@(JQueue | JRetry) =>
         // be patient when there's a queue, don't even start a job as we won't be able to tell whether it started
+        // if we fire off a build, don't realize it started, and reboot the kitten, it will start a redundant job next time,
+        // if the originally started job is still in the queue (as the job is hidden there)
         if (s == JQueue) context setReceiveTimeout (10 minutes)
-        else retryCount += 1
+        else {
+          retryCount += 1
+          context setReceiveTimeout (1 minutes)
+        }
 
         // we haven't started our own build yet, but maybe an older one is running
         // watch its result, but still start our own
-        val runningBuilds = ourJobs.filter(_.building) match {
+        val relevantBuilds = ourJobs.filter(_.building) match {
           case bs if bs.isEmpty =>
             log.debug("No building jobs for "+ b.job +" #"+ b.args("pullrequest") +" commit "+ b.args("sha") +" all jobs: "+ ourJobs)
             ourJobs.headOption.toSet // if no running builds, just look at the most recent one
           case bs => bs.toSet
         }
 
-        val newlyDiscovered = runningBuilds.filterNot(bs => knownRunning(bs.url))
+        val newlyDiscovered = relevantBuilds.filterNot(bs => knownRunning(bs.url))
 
-        newlyDiscovered.foreach { status =>
-          if (status.building) {
-            jenkinsService ! JobStarted(b, status)
-            b.commenter ! BuildStarted(status.url)
-          } else {
-            b.commenter ! BuildResult(status)
-          }
-          notifiedCommenter = true
+        val (building, done) = newlyDiscovered.partition(_.building)
+        building foreach { status =>
+          jenkinsService ! JobStarted(b, status)
+          b.commenter ! BuildStarted(status.url)
+        }
+
+        // done after sending BuildStarted so that (hopefully) this status is more recent
+        done foreach { status =>
+          b.commenter ! BuildResult(status)
         }
 
         knownRunning ++= newlyDiscovered.map(_.url)
 
-        // if there's a running job for this commit and this job, that's good enough (unless we encountered an explicit PLS REBUILD --> b.force)
-        if (b.noop || (newlyDiscovered.nonEmpty && !b.force)) context stop self
-        else if (s != JQueue) { // essentially duplicating jenkins' queue because it sucks (can't discover jobs)
+        val canStop = startedBuild || !b.force
+        val foundJob = newlyDiscovered.nonEmpty
+        if (canStop && foundJob) context stop self
+        else if (s != JQueue && !b.noop && !startedBuild) {
+          startedBuild = true
           api.buildJob(b.job, b.args)
           log.debug("Started job for #"+ b.args("pullrequest") +" --> "+ b.job.name +" sha: "+ b.args("sha"))
-          context setReceiveTimeout (1 minutes)
         }
 
+        // send BuildQueued no more than once
         if (!notifiedCommenter) {
-          b.commenter ! BuildQueued
-          notifiedCommenter = true
+          notifiedCommenter = true // either because newlyDiscovered.nonEmpty and thus we notified above, or we will now
+          if (newlyDiscovered.isEmpty)
+            b.commenter ! BuildQueued
         }
 
     }
