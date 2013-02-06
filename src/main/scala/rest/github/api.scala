@@ -301,7 +301,9 @@ case class CommitStatus(
 
   // we don't add a SUCCESS job when there's other pending jobs waiting
   // we add a PENDING job with a description like "$job OK $message"
-  def fakePending = pending && description.flatMap(_.split(" ", 3).toList.drop(1).take(1).headOption).exists(_ == FAKE_PENDING)
+  def fakePending = {
+    pending && description.flatMap(_.split(" ", 3).toList.drop(1).take(1).headOption).exists(_ == FAKE_PENDING)
+  }
   def done    = success || error || fakePending
 
   // something went wrong
@@ -323,7 +325,7 @@ object CommitStatus {
   def jobQueued(name: String) = CommitStatus(PENDING, None, Some(name +" queued."))
   def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
   def jobEnded(name: String, url: String, ok: Boolean, message: String) =
-    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name + message).take(140)))
+    CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name +" "+ message).take(140)))
   def jobEndedBut(name: String, url: String, message: String) =
     CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
 

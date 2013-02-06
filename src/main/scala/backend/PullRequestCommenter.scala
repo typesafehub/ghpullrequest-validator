@@ -97,11 +97,15 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       val newStatus =
         if (status.result == "SUCCESS") {
           val others = ghapi.commitStatus(user, repo, sha).filterNot(_.forJob(job.name))
-          val stillRunning = others.groupBy(_.job.getOrElse("")) collect {
-            case (job, stati) if !stati.exists(_.done) => job
+          val otherStati = others.groupBy(_.job.getOrElse(""))
+          val stillRunning = otherStati collect {
+            // there's a truly pending status and no corresponding done status --> job's still running
+            case (job, stati) if stati.exists(st => (st.pending && !st.done && stati.exists(st2 => st2.done && st2.target_url == st.target_url)))  =>
+              log.debug("Still running: "+ (job, stati))
+              job
           }
           if (stillRunning.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
-          else CommitStatus.jobEndedBut(job.name, status.url, message+ stillRunning.mkString("(but waiting for ", ", ", ")."))
+          else CommitStatus.jobEndedBut(job.name, status.url, message+ stillRunning.mkString(" (But waiting for ", ", ", ")"))
         } else {
           CommitStatus.jobEnded(job.name, status.url, false, message)
         }
