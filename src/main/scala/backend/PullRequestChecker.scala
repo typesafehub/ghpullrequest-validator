@@ -157,10 +157,10 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
     def buildLog(commits: List[PRCommit]) = {
       val commitStati = commits map (c => (c, ghapi.commitStatus(user, repo, c.sha)))
-
+      def shortString(job: String)(cs: CommitStatus) = cs.stateString +":"+ cs.description.getOrElse("").replace(job, "")
       jenkinsJobs.map { j =>
         j.name +":\n"+ commitStati.map { case (c, sts) =>
-          "  - "+ c.sha.take(8) +": "+ sts.filter(_.forJob(j.name)).distinct.map(_.toString.replace(j.name, "")).mkString(", ")
+          "  - "+ c.sha.take(8) +": "+ sts.filter(_.forJob(j.name)).distinct.map(shortString(j.name)).mkString(", ")
         }.mkString("\n")+"\n"
       }.mkString("\n")
     }

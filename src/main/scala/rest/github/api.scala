@@ -309,7 +309,8 @@ case class CommitStatus(
   // something went wrong
   def failed  = state == FAILURE
 
-  override def toString = (if (target_url.nonEmpty) "["+state+"]("+ target_url.get +")" else state) +": "+ description.getOrElse("")
+  def stateString = (if (target_url.nonEmpty) "["+state+"]("+ target_url.get +")" else state)
+  override def toString = stateString +": "+ description.getOrElse("")
 }
 object CommitStatus {
   final val PENDING = "pending"
