@@ -18,7 +18,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
   private val repo = pull.base.repo.name
 
   def addStatus(status: CommitStatus) = {
-    if (!ghapi.commitStatus(user, repo, sha).contains(status)) {
+    if (!ghapi.commitStatus(user, repo, sha).take(1).contains(status)) {
       log.debug("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
 
       ghapi.setCommitStatus(user, repo, sha, status)
