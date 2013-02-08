@@ -106,17 +106,22 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
               log.debug("Still running: "+ (job, stati))
               job
           }
-          val earlierRunningCommits = {
+          val earlierCommits = {
             val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
             if (sha == commits.last.sha)
-              commits.init filterNot (c => CommitStatus.allDone(ghapi.commitStatus(user, repo, c.sha)))
+              commits.init map {c =>
+                (c.sha, ghapi.commitStatus(user, repo, c.sha))
+              }
             else Nil
           }
 
+          val earlierRunningCommits = earlierCommits.collect{case (sha, stati) if CommitStatus.jobNotDoneYet(stati) => sha}
           if (stillRunning.isEmpty && earlierRunningCommits.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
           else {
-            val earlierMessage = (stillRunning.map(_.toString)++earlierRunningCommits.map(_.sha.take(7))).mkString(" (But waiting for ", ", ", ")")
-            CommitStatus.jobEndedBut(job.name, status.url, message + earlierMessage)
+            earlierCommits.collect{ case (_, head :: _) if head.finishedUnsuccessfully => head }.headOption.getOrElse {
+              val earlierMessage = (stillRunning.map(_.toString)++earlierRunningCommits.map(_.take(7))).mkString(" (But waiting for ", ", ", ")")
+              CommitStatus.jobEndedBut(job.name, status.url, message + earlierMessage)
+            }
           }
         } else {
           CommitStatus.jobEnded(job.name, status.url, false, message)

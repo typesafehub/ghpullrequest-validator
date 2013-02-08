@@ -306,6 +306,8 @@ case class CommitStatus(
   }
   def done    = success || error || fakePending
 
+  def finishedUnsuccessfully = error || failed
+
   // something went wrong
   def failed  = state == FAILURE
 
@@ -331,7 +333,8 @@ object CommitStatus {
     CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
 
   // allowing for st.done for robustness, in principle it shouldn't happen but it doesn't hurt
-  def allDone(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.done).getOrElse(false)
+  def jobNotDoneYet(cs: List[CommitStatus]) = cs.headOption.map(st => (st.pending && !st.fakePending) || st.failed).getOrElse(true)
+  def jobDoneOk(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.fakePending).getOrElse(false)
 }
 
 
