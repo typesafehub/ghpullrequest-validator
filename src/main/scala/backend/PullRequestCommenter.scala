@@ -94,18 +94,30 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
         }
 
       // avoid false positives when a faster job completes successfully before a longer-running job has a chance to indicate failure
+      // TODO: do the same for the last commit: should only go to unqualified success if all earlier commits are success
       val newStatus =
         if (status.result == "SUCCESS") {
           val others = ghapi.commitStatus(user, repo, sha).filterNot(_.forJob(job.name))
           val otherStati = others.groupBy(_.job.getOrElse(""))
+          log.debug("Stati not for "+  job.name +" --> "+ otherStati)
           val stillRunning = otherStati collect {
             // there's a truly pending status and no corresponding done status --> job's still running
-            case (job, stati) if stati.exists(st => (st.pending && !st.done && stati.exists(st2 => st2.done && st2.target_url == st.target_url)))  =>
+            case (job, stati) if stati.exists(st => (st.pending && !st.done && !stati.exists(st2 => st2.done && st2.target_url == st.target_url)))  =>
               log.debug("Still running: "+ (job, stati))
               job
           }
-          if (stillRunning.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
-          else CommitStatus.jobEndedBut(job.name, status.url, message+ stillRunning.mkString(" (But waiting for ", ", ", ")"))
+          val earlierRunningCommits = {
+            val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
+            if (sha == commits.last.sha)
+              commits.init filterNot (c => CommitStatus.allDone(ghapi.commitStatus(user, repo, c.sha)))
+            else Nil
+          }
+
+          if (stillRunning.isEmpty && earlierRunningCommits.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
+          else {
+            val earlierMessage = (stillRunning.map(_.toString)++earlierRunningCommits.map(_.sha.take(7))).mkString(" (But waiting for ", ", ", ")")
+            CommitStatus.jobEndedBut(job.name, status.url, message + earlierMessage)
+          }
         } else {
           CommitStatus.jobEnded(job.name, status.url, false, message)
         }

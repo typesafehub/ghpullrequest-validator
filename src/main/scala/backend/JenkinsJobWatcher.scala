@@ -1,9 +1,8 @@
 package backend
 
-import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props, ReceiveTimeout}
-import rest.jenkins.{API => JenkinsAPI}
+import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Props, ReceiveTimeout }
+import rest.jenkins.{ API => JenkinsAPI }
 import akka.util.duration._
-
 
 /** An actor that watches a specific job and returns its status when the job is completed. */
 class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String) extends Actor with ActorLogging {
@@ -18,16 +17,15 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String
     }
 
   def receive: Receive = {
-    case ReceiveTimeout => 
-      val status = api.buildStatus(build.job, buildnumber)
-//      log.debug("Job finished? " + build.job.name + " - " + status + " building: "+ status.building + "current backoff: "+ _backoff)
+    case ReceiveTimeout =>
+      api.buildStatus(build.job, buildnumber) foreach { status =>
+        if (status.building) context setReceiveTimeout (backoff minutes)
+        else {
+          log.debug("Job finished! " + build.job.name + " - " + status)
 
-      if (status.building) context setReceiveTimeout (backoff minutes)
-      else {
-        log.debug("Job finished! "+ build.job.name  +" - "+ status)
-
-        build.commenter ! BuildResult(status)
-        context stop self
+          build.commenter ! BuildResult(status)
+          context stop self
+        }
       }
   }
 
