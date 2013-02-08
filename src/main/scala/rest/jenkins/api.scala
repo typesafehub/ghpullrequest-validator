@@ -28,18 +28,14 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
     Http(action >- identity[String])
   }
 
-  def buildStatus(job: JenkinsJob, buildNumber: String): BuildStatus = {
+  def buildStatus(job: JenkinsJob, buildNumber: String): Option[BuildStatus] = try {
     val loc = makeReq("job/%s/%s/api/json" format (job.name, buildNumber))
-    Http(loc >- parseJsonTo[BuildStatus])
-  }
+    Some(Http(loc >- parseJsonTo[BuildStatus]))
+  }  catch {case _: dispatch.StatusCode => None}
 
   /** A traversable that lazily pulls build status information from jenkins. */
   def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = {
-    def jobInfo(job: JenkinsJob): Job = {
-      val loc = makeReq("job/%s/api/json" format (job.name))
-      Http(loc >- parseJsonTo[Job])
-    }
-    val info = jobInfo(job)
+    val info = Http(makeReq("job/%s/api/json" format (job.name)) >- parseJsonTo[Job])
     val reportedBuilds = info.builds.sorted
 
     // hack: retrieve queued jobs from queue/api/json
@@ -67,7 +63,7 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
     }
 
     // queued items must come first, they have been added more recently or they wouldn't have been queued
-    queuedStati.toStream ++ allBuilds.reverse.toStream.map(build => buildStatus(job, build.number))
+    queuedStati.toStream ++ allBuilds.reverse.toStream.flatMap(b => buildStatus(job, b.number))
   }
 }
 

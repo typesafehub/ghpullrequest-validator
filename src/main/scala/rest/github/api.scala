@@ -309,7 +309,8 @@ case class CommitStatus(
   // something went wrong
   def failed  = state == FAILURE
 
-  override def toString = (if (target_url.nonEmpty) "["+state+"]("+ target_url.get +")" else state) +": "+ description.getOrElse("")
+  def stateString = (if (target_url.nonEmpty) "["+state+"]("+ target_url.get +")" else state)
+  override def toString = stateString +": "+ description.getOrElse("")
 }
 object CommitStatus {
   final val PENDING = "pending"
@@ -329,6 +330,8 @@ object CommitStatus {
   def jobEndedBut(name: String, url: String, message: String) =
     CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
 
+  // allowing for st.done for robustness, in principle it shouldn't happen but it doesn't hurt
+  def allDone(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.done).getOrElse(false)
 }
 
 
