@@ -60,7 +60,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             val message = jobDesc +" [(results)]("+ status.url +"):\n"+
               (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
               "<br>"+ durationReport +
-              "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)" +
               """<br> to rebuild, comment "PLS REBUILD/"""+ job.name + "@"+ sha+ """" on PR """+ pull.number // not referencing the PR github-style as that causes lots of noise
 
             log.debug("Failed: "+ message)
