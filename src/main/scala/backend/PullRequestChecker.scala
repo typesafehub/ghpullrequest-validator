@@ -197,6 +197,28 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       }
     }
 
+    // delete all commit comments -- don't delete PR comments as they would re-trigger
+    // the commands that caused them originally
+    findNewCommands("NOLITTER!") map { case (prefix, body) =>
+//      comments foreach { comm =>
+//        if (comm.user.login == user && !comm.body.startsWith(IGNORE_NOTE_TO_SELF)) {
+//          log.debug("Deleting PR comment "+ comm.id)
+//          ghapi.deletePRComment(user, repo, comm.id)
+//        }
+//        else log.debug("Leaving PR comment "+ (comm.id, comm.user.login))
+//      }
+      ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: cleaning up... sorry! :cat:")
+      commits foreach { c =>
+        ghapi.commitComments(user, repo, c.sha) foreach { comm =>
+          if (comm.user.login == ghapi.userName) {
+            log.debug("Deleting commit comment "+ comm.id)
+            ghapi.deleteCommitComment(user, repo, comm.id)
+          }
+          else log.debug("Leaving commit comment "+ (comm.id, comm.user.login))
+        }
+      }
+    }
+
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha)
       jenkinsJobs foreach { j =>
