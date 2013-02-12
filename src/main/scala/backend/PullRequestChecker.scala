@@ -7,6 +7,7 @@ import util.control.Exception.catching
 import rest.github.PRCommit
 import rest.github.CommitStatus
 import rest.github.Pull
+import rest.github.Milestone
 
 
 case class CheckPullRequests(username: String, project: String)
@@ -49,8 +50,14 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val pullNum = pull.number.toString
 
     branchToMS get(pull.base.ref) foreach { milestone =>
-      log.debug("Setting milestone of #"+ pullNum +" to "+ milestone.title)
-      ghapi.setMilestone(user, repo, pullNum, milestone.number)
+      val msNum = milestone.number
+      ghapi.issue(user, repo, pullNum).milestone match {
+        case Some(Milestone(_ /*`ghNum`*/, _, _)) => // allow any milestone, don't overwrite
+        case _ =>
+          log.debug("Setting milestone of #"+ pullNum +" to "+ milestone.title)
+          ghapi.setMilestone(user, repo, pullNum, msNum)
+      }
+
     }
   }
 

@@ -186,6 +186,13 @@ class API(val token: String, val userName: String) {
     val action = (url.copy(method="PATCH") << makeJson(JObject(List(JField("milestone", JInt(milestone))))) >| )
     Http(action)
   }
+
+  def issue(user: String, repo: String, number: String): Issue = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s" format (user,repo,number))
+    val action = url >- parseJsonTo[Issue]
+    Http(action)
+  }
+
 }
 
 object API {
@@ -241,7 +248,8 @@ case class Pull(
   state: String,
   updated_at: String,
   created_at: String,
-  mergeable: Boolean
+  mergeable: Boolean,
+  milestone: Option[Milestone] // when treating an issue as a pull
 ) extends Ordered[Pull] {
   def compare(other: Pull): Int = number compare other.number
   def sha10  = head.sha10
@@ -250,6 +258,8 @@ case class Pull(
   def date   = updated_at takeWhile (_ != 'T')
   def time   = updated_at drop (date.length + 1)
 }
+
+case class Issue(milestone: Option[Milestone])
 
 case class GitRef(
   sha: String,
