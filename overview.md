@@ -1,7 +1,7 @@
 # Pull Request Validator
 [Fork me, fix me, anyway you improve me!](https://github.com/typesafehub/ghpullrequest-validator)[*](http://www.youtube.com/watch?v=rpRiSb_Ir-s)
 
-Run me: `sbt rub-main GhApp $configFile`
+Run me: `sbt run-main GhApp $configFile`
 
 ## Overview
 The Pull Request Validator (PRV) is the middle man between GitHub and Jenkins. It can monitor multiple GitHub repositories and Jenkins instances.
