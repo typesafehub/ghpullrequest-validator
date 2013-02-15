@@ -42,14 +42,12 @@ object Authenticate {
 }
 
 
-trait API {
+class API(val token: String, val userName: String) {
   import Authenticate.USER_AGENT
 
   private def makeAPIurl(uri: String) = url("https://api.github.com" + uri) <:< Map(
       "Authorization" -> "token %s".format(token),
       "User-Agent" -> USER_AGENT)
-
-  val token: String
 
 
   /** Pulls in all the pull requests. */
@@ -85,6 +83,13 @@ trait API {
     Http(action)
   }
   
+  // DELETE /repos/:owner/:repo/pulls/comments/:number
+  def deletePRComment(user: String, repo: String, id: String): Unit = {
+    val url = makeAPIurl("/repos/%s/%s/pulls/comments/%s" format (user, repo, id))
+    val action = (url.copy(method="DELETE") >|)
+    Http(action)
+  }
+
   // PATCH /repos/:owner/:repo/issues/comments/:id
   def editPRComment(user: String, repo: String, id: String, body: String): Comment = {
     val url = makeAPIurl("/repos/%s/%s/issues/comments/%s" format (user, repo, id))
@@ -158,6 +163,14 @@ trait API {
     Http(action)
   }
 
+  // DELETE /repos/:owner/:repo/comments/:id
+  def deleteCommitComment(user: String, repo: String, id: String): Unit = {
+    val url = makeAPIurl("/repos/%s/%s/comments/%s" format (user, repo, id))
+    val action = (url.copy(method="DELETE") >|)
+    Http(action)
+  }
+
+
   //  GET /repos/:owner/:repo/milestones
   def repoMilestones(user: String, repo: String, state: String = "open"): List[Milestone] = {
     val url = makeAPIurl("/repos/%s/%s/milestones?state=%s" format (user, repo, state))
@@ -173,14 +186,21 @@ trait API {
     val action = (url.copy(method="PATCH") << makeJson(JObject(List(JField("milestone", JInt(milestone))))) >| )
     Http(action)
   }
+
+  def issue(user: String, repo: String, number: String): Issue = {
+    val url = makeAPIurl("/repos/%s/%s/issues/%s" format (user,repo,number))
+    val action = url >- parseJsonTo[Issue]
+    Http(action)
+  }
+
 }
 
 object API {
-  def apply(auth: Authorization): API = 
-    new { override val token = auth.token } with API {}
+  def apply(auth: Authorization, user: String): API =
+    new API(auth.token, user)
 
   def fromUser(user: String, pw: String): API = 
-    apply(Authenticate.authenticate(user, pw))
+    apply(Authenticate.authenticate(user, pw), user)
 }
 
 case class AuthApp(name: String, url: String)
@@ -228,7 +248,8 @@ case class Pull(
   state: String,
   updated_at: String,
   created_at: String,
-  mergeable: Boolean
+  mergeable: Boolean,
+  milestone: Option[Milestone] // when treating an issue as a pull
 ) extends Ordered[Pull] {
   def compare(other: Pull): Int = number compare other.number
   def sha10  = head.sha10
@@ -237,6 +258,8 @@ case class Pull(
   def date   = updated_at takeWhile (_ != 'T')
   def time   = updated_at drop (date.length + 1)
 }
+
+case class Issue(milestone: Option[Milestone])
 
 case class GitRef(
   sha: String,
@@ -306,6 +329,8 @@ case class CommitStatus(
   }
   def done    = success || error || fakePending
 
+  def finishedUnsuccessfully = error || failed
+
   // something went wrong
   def failed  = state == FAILURE
 
@@ -331,7 +356,8 @@ object CommitStatus {
     CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
 
   // allowing for st.done for robustness, in principle it shouldn't happen but it doesn't hurt
-  def allDone(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.done).getOrElse(false)
+  def jobNotDoneYet(cs: List[CommitStatus]) = cs.headOption.map(st => (st.pending && !st.fakePending) || st.failed).getOrElse(true)
+  def jobDoneOk(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.fakePending).getOrElse(false)
 }
 
 

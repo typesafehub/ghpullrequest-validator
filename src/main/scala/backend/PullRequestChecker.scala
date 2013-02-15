@@ -7,6 +7,7 @@ import util.control.Exception.catching
 import rest.github.PRCommit
 import rest.github.CommitStatus
 import rest.github.Pull
+import rest.github.Milestone
 
 
 case class CheckPullRequests(username: String, project: String)
@@ -49,8 +50,14 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val pullNum = pull.number.toString
 
     branchToMS get(pull.base.ref) foreach { milestone =>
-      log.debug("Setting milestone of #"+ pullNum +" to "+ milestone.title)
-      ghapi.setMilestone(user, repo, pullNum, milestone.number)
+      val msNum = milestone.number
+      ghapi.issue(user, repo, pullNum).milestone match {
+        case Some(Milestone(_ /*`ghNum`*/, _, _)) => // allow any milestone, don't overwrite
+        case _ =>
+          log.debug("Setting milestone of #"+ pullNum +" to "+ milestone.title)
+          ghapi.setMilestone(user, repo, pullNum, msNum)
+      }
+
     }
   }
 
@@ -98,7 +105,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     // only look at most recent status (head of the stati) -- if it's either success
     // .... or done (in principle it shouldn't happen that there's a mix of only _.done and _.success,
     // but due to a bug that's now fixed some stati are messed up like that, and if all jobs are done || success, it's ok for sure)
-    val success = jenkinsJobs forall (j => commitStati.map{case (_, cs) => CommitStatus.allDone(cs.filter(_.forJob(j.name)))}.reduce(_ && _))
+    val success = jenkinsJobs forall (j => commitStati.map{case (_, cs) => CommitStatus.jobDoneOk(cs.filter(_.forJob(j.name)))}.reduce(_ && _))
 
     if (!success)
       log.debug("checkSuccess failed for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.distinct.mkString(", ") }.mkString("\n"))
@@ -193,6 +200,28 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         jenkinsJobs foreach { j =>
           val jobStati = stati.filter(_.forJob(j.name))
           buildCommit(c.sha, j, noop = true)
+        }
+      }
+    }
+
+    // delete all commit comments -- don't delete PR comments as they would re-trigger
+    // the commands that caused them originally
+    findNewCommands("NOLITTER!") map { case (prefix, body) =>
+//      comments foreach { comm =>
+//        if (comm.user.login == user && !comm.body.startsWith(IGNORE_NOTE_TO_SELF)) {
+//          log.debug("Deleting PR comment "+ comm.id)
+//          ghapi.deletePRComment(user, repo, comm.id)
+//        }
+//        else log.debug("Leaving PR comment "+ (comm.id, comm.user.login))
+//      }
+      ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: cleaning up... sorry! :cat:")
+      commits foreach { c =>
+        ghapi.commitComments(user, repo, c.sha) foreach { comm =>
+          if (comm.user.login == ghapi.userName) {
+            log.debug("Deleting commit comment "+ comm.id)
+            ghapi.deleteCommitComment(user, repo, comm.id)
+          }
+          else log.debug("Leaving commit comment "+ (comm.id, comm.user.login))
         }
       }
     }

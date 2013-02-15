@@ -18,7 +18,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
   private val repo = pull.base.repo.name
 
   def addStatus(status: CommitStatus) = {
-    if (!ghapi.commitStatus(user, repo, sha).contains(status)) {
+    if (!ghapi.commitStatus(user, repo, sha).take(1).contains(status)) {
       log.debug("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
 
       ghapi.setCommitStatus(user, repo, sha, status)
@@ -60,8 +60,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             val message = jobDesc +" [(results)]("+ status.url +"):\n"+
               (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
               "<br>"+ durationReport +
-              "<br> ![sad kitty](http://cdn.memegenerator.net/instances/100x/31464013.jpg)" +
-              """<br> to rebuild, comment "PLS REBUILD/"""+ job.name + "@"+ sha+ """"on PR #"""+ pull.number
+              """<br> to rebuild, comment "PLS REBUILD/"""+ job.name + "@"+ sha+ """" on PR """+ pull.number // not referencing the PR github-style as that causes lots of noise
 
             log.debug("Failed: "+ message)
 
@@ -106,17 +105,22 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
               log.debug("Still running: "+ (job, stati))
               job
           }
-          val earlierRunningCommits = {
+          val earlierCommits = {
             val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
             if (sha == commits.last.sha)
-              commits.init filterNot (c => CommitStatus.allDone(ghapi.commitStatus(user, repo, c.sha)))
+              commits.init map {c =>
+                (c.sha, ghapi.commitStatus(user, repo, c.sha))
+              }
             else Nil
           }
 
+          val earlierRunningCommits = earlierCommits.collect{case (sha, stati) if CommitStatus.jobNotDoneYet(stati) => sha}
           if (stillRunning.isEmpty && earlierRunningCommits.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
           else {
-            val earlierMessage = (stillRunning.map(_.toString)++earlierRunningCommits.map(_.sha.take(7))).mkString(" (But waiting for ", ", ", ")")
-            CommitStatus.jobEndedBut(job.name, status.url, message + earlierMessage)
+            earlierCommits.collect{ case (_, head :: _) if head.finishedUnsuccessfully => head }.headOption.getOrElse {
+              val earlierMessage = (stillRunning.map(_.toString)++earlierRunningCommits.map(_.take(7))).mkString(" (But waiting for ", ", ", ")")
+              CommitStatus.jobEndedBut(job.name, status.url, message + earlierMessage)
+            }
           }
         } else {
           CommitStatus.jobEnded(job.name, status.url, false, message)
