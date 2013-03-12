@@ -37,7 +37,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         case bs => bs.toSet
       }
 
-      val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
+      val newlyDiscovered = ourJobs.filterNot(bs => seenBuilds(bs.url))
 
       val (buildingOrQueued, done) = newlyDiscovered.partition(st => st.building || st.queued)
 
