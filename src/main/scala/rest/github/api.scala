@@ -274,8 +274,10 @@ case class GitRef(
 case class PRCommit(
   sha: String,
   url: String,
-  commit: CommitInfo
-)
+  commit: CommitInfo) {
+  // meh
+  def shaMatches(other: String) = other.length >= 5 && sha.startsWith(other) || other.startsWith(sha)
+}
 
 case class CommitInfo(
   committer: CommitAuthor,
@@ -340,7 +342,7 @@ case class CommitStatus(
 object CommitStatus {
   final val PENDING = "pending"
   final val SUCCESS = "success"
-  final val ERROR = "error"
+  final val ERROR   = "error"
   final val FAILURE = "failure"
 
   // to distinguish PENDING jobs that are done but waiting on other PENDING jobs from truly pending jobs
@@ -350,14 +352,48 @@ object CommitStatus {
   // TODO: assert(!name.contains(" ")) for all job* methods below
   def jobQueued(name: String) = CommitStatus(PENDING, None, Some(name +" queued."))
   def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
+  // assert(!message.startsWith(FAKE_PENDING))
   def jobEnded(name: String, url: String, ok: Boolean, message: String) =
     CommitStatus(if(ok) SUCCESS else ERROR, Some(url), Some((name +" "+ message).take(140)))
-  def jobEndedBut(name: String, url: String, message: String) =
-    CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" "+ message).take(140)))
 
-  // allowing for st.done for robustness, in principle it shouldn't happen but it doesn't hurt
-  def jobNotDoneYet(cs: List[CommitStatus]) = cs.headOption.map(st => (st.pending && !st.fakePending) || st.failed).getOrElse(true)
+  // only used for last commit
+  def jobEndedBut(name: String, url: String, message: String)(prev: String) =
+    CommitStatus(PENDING, Some(url), Some((name +" "+ FAKE_PENDING +" but waiting for "+ prev).take(140)))
+
+  // depends on the invariant maintained by overruleSuccess so that we only have to look at the most recent status
   def jobDoneOk(cs: List[CommitStatus]) = cs.headOption.map(st => st.success || st.fakePending).getOrElse(false)
+
+  /** Find the commit status that should precede the successful status for job `jobName` on commit `sha`,
+   * to maintain the invariant that an error/pending status (without corresponding success) appears as the most recent status (per commit and per PR)
+   */
+  def overruleSuccess(ghapi: API, user: String, repo: String, sha: String, 
+    jobName: String, statusUrl: String, message: String, priorCommits: List[PRCommit]): Option[CommitStatus] = {
+    // this job completed successfully, find status that indicates another job may not be done yet with this commit
+    val otherJobsNotDoneOk = notDoneOk(ghapi.commitStatus(user, repo, sha).filterNot(_.forJob(jobName)))
+    otherJobsNotDoneOk.headOption orElse {
+      // find earlier commit that has an unfinished/unsuccessful job
+      priorCommits.toStream.flatMap(c =>
+        notDoneOk(ghapi.commitStatus(user, repo, c.sha)).headOption.map(csNotOk => jobEndedBut(jobName, statusUrl, message)(csNotOk.target_url+" for commit "+ c.sha.take(6)))
+      ).headOption
+    }
+  }
+
+
+  /** Find commit status that's either truly pending (not fake pending) or that found an error,
+   * and for which there's no corresponding successful commit status
+   */
+  def notDoneOk(commitStati: List[CommitStatus]): Iterable[CommitStatus] = {
+    val grouped  = commitStati.groupBy(_.job)
+    val problems = grouped.flatMap {
+      case (Some(jobName), jobAndCommitStati) if !jobAndCommitStati.exists(_.success) =>
+        jobAndCommitStati.filter(cs => (cs.pending && !cs.fakePending) || cs.error)
+      case _ =>
+        Nil
+    }
+    println("notDoneOk grouped: "+ grouped.mkString("\n"))
+    println("problems: "+ problems)
+    problems
+  }
 }
 
 

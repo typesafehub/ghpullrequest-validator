@@ -8,8 +8,10 @@ import rest.github.CommitStatus
 
 
 /** Comments on pull request `pull` with the result of the jenkins job `job` that's building commit `sha`.
- * Note: This only helps the PulLRequestValidator actors and should not be used
- * stand-alone.
+ *
+ * One actor per unique combination of pull/job/sha/forced (forced == triggered by PLS REBUILD command)
+ *
+ * Note: This only helps the PulLRequestValidator actors and should not be used stand-alone.
  */
 class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, sha: String, notify: ActorRef) extends Actor with ActorLogging {
   val SPURIOUS_REBUILD = "SPURIOUS ABORT?"
@@ -92,44 +94,24 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             durationReport
         }
 
-      // avoid false positives when a faster job completes successfully before a longer-running job has a chance to indicate failure
-      // TODO: do the same for the last commit: should only go to unqualified success if all earlier commits are success
-      val newStatus =
-        if (status.result == "SUCCESS") {
-          val others = ghapi.commitStatus(user, repo, sha).filterNot(_.forJob(job.name))
-          val otherStati = others.groupBy(_.job.getOrElse(""))
-          log.debug("Stati not for "+  job.name +" --> "+ otherStati)
-          val stillRunning = otherStati collect {
-            // there's a truly pending status and no corresponding done status --> job's still running
-            case (job, stati) if stati.exists(st => (st.pending && !st.done && !stati.exists(st2 => st2.done && st2.target_url == st.target_url)))  =>
-              log.debug("Still running: "+ (job, stati))
-              job
-          }
-          val earlierCommits = {
-            val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
-            if (sha == commits.last.sha)
-              commits.init map {c =>
-                (c.sha, ghapi.commitStatus(user, repo, c.sha))
-              }
-            else Nil
-          }
-
-          val earlierRunningCommits = earlierCommits.collect{case (sha, stati) if CommitStatus.jobNotDoneYet(stati) => sha}
-          if (stillRunning.isEmpty && earlierRunningCommits.isEmpty) CommitStatus.jobEnded(job.name, status.url, true, message)
-          else {
-            earlierCommits.collect{ case (_, head :: _) if head.finishedUnsuccessfully => head }.headOption.getOrElse {
-              val earlierMessage = (stillRunning.map(_.toString)++earlierRunningCommits.map(_.take(7))).mkString(" (But waiting for ", ", ", ")")
-              CommitStatus.jobEndedBut(job.name, status.url, message + earlierMessage)
-            }
-          }
-        } else {
-          CommitStatus.jobEnded(job.name, status.url, false, message)
-        }
-
-      addStatus(newStatus)
-
-      notify ! CommitDone(pull, sha, job, status.result == "SUCCESS")
-      // TODO - Can we kill ourselves now? I think so.
+      val ok = status.result == "SUCCESS"
+      val myStatus = CommitStatus.jobEnded(job.name, status.url, ok, message)
+      addStatus(myStatus)
+      notify ! CommitDone(pull, sha, job, ok)
       context stop self
+
+      // We want to ensure that a PR is only ok if all commits and all jobs are ok.
+      // Unfortunately, GitHub only looks at the most recent status of the last commit of the PR to determine the status of the whole PR.
+      // As we can only prepend new statuses to a commit while having to support multiple jobs per commit and multiple commits per PR,
+      // we implement the following strategy to implement the desired behaviour.
+      // For every commit, we copy error/pending jobs that have no corresponding success to the head of the list.
+      // For the last commit, we add a fake pending status if there are earlier commits that meet the above condition
+      //   (having an error/pending status without corresponding success).
+      if (ok) {
+        val commits      = ghapi.pullrequestcommits(user, repo, pull.number.toString)
+        val priorCommits = if (commits.lengthCompare(1) > 0 && commits.last.shaMatches(sha)) commits.init else Nil
+        CommitStatus.overruleSuccess(ghapi, user, repo, sha,
+          job.name, status.url, message, priorCommits) foreach addStatus
+      }
   }
 }
