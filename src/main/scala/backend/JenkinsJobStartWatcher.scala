@@ -15,7 +15,8 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
   private val seenBuilds = collection.mutable.HashSet[String]()
   // we only try to start a build once, if that fails, we'll time out and try again
-  private var startedBuild = false
+  private[this] var startedBuild = false
+  private[this] var retryCount = 5 // if jenkins hasn't at least queued our job 5 mins later, something is wrong
 
   def receive: Receive = {
     case ReceiveTimeout =>
@@ -60,6 +61,13 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         startedBuild = true
         api.buildJob(b.job, b.args)
         log.debug("Started job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+      } else {
+        retryCount -= 1
+        if (retryCount == 0) {
+          log.debug("Failed to start job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+          jenkinsService ! b // retry the build
+          context stop self
+        }
       }
   }
 
