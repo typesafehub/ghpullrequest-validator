@@ -13,5 +13,9 @@ package object rest {
   import org.apache.http.auth.AuthScope
   object Http extends LoggingHttp with NoLogging with thread.Safety {
     type CurrentCredentials = util.DynamicVariable[Option[(AuthScope, Credentials)]]
+    // https://groups.google.com/forum/#!topic/dispatch-scala/RCtWZ5ZJuYo/discussion
+    import org.apache.http.params.CoreConnectionPNames
+    client.getParams.setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 5000)
+    client.getParams.setParameter(CoreConnectionPNames.SO_TIMEOUT, 10000)
   }
 }
