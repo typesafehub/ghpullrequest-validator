@@ -1,15 +1,6 @@
 name := "ghpull-request-project"
 
-resolvers += Classpaths.typesafeResolver
+addSbtPlugin("com.typesafe.sbt" % "sbt-start-script" % "0.7.0")
 
-resolvers += "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
+addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "0.5.4")
 
-	
-addSbtPlugin("com.typesafe.startscript" % "xsbt-start-script-plugin" % "0.5.3")
-
-addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "0.5.0")
-
-//addSbtPlugin("com.typesafe.sbt" % "sbt-start-script" % "0.5.3")
-
-// Use the Play sbt plugin for Play projects
-//addSbtPlugin("play" % "sbt-plugin" % "2.0.1")
