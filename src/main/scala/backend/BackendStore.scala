@@ -1,8 +1,9 @@
 package backend
 
 import akka.actor.{Actor,ActorSystem, Props}
-import akka.dispatch.Future
-import akka.util.duration._
+import scala.concurrent.Future
+import scala.concurrent.duration._
+
 import akka.pattern.ask
 
 
@@ -50,6 +51,8 @@ case object GetCurrentConfigs
 case class DeleteConfig(config: Config)
 
 class BackendStoreActor extends Actor {
+  import context.dispatcher // Use this Actors' Dispatcher as ExecutionContext
+
   final def receive: Receive = {
     case CheckAllProjects(period)   =>
       checkAllProjects()

@@ -2,7 +2,7 @@ package backend
 
 import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Props, ReceiveTimeout }
 import rest.jenkins.{ API => JenkinsAPI }
-import akka.util.duration._
+import scala.concurrent.duration._
 
 /** An actor that watches a specific job and returns its status when the job is completed. */
 class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String) extends Actor with ActorLogging {

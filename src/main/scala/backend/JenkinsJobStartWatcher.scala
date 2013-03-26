@@ -2,7 +2,7 @@ package backend
 
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props, ActorLogging, ReceiveTimeout }
 import rest.jenkins.{ API => JenkinsAPI }
-import akka.util.duration._
+import scala.concurrent.duration._
 import rest.jenkins.BuildStatus
 
 /** A class that watches for a job to begin on jenkins and then
