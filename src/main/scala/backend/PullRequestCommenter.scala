@@ -48,7 +48,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
         status.result match {
           case "FAILURE" =>
             import dispatch._
-            val consoleOutput = Http(url(status.url) / "consoleText" >- identity[String])
+            val consoleOutput = rest.Http(dispatch.classic.url(status.url) / "consoleText" >- identity[String])
             val (logLines, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
             val failedTests =
@@ -73,7 +73,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
               if (!commitComments.exists(_.body.startsWith(jobDesc)))
                 ghapi.addCommitComment(user, repo, sha, message)
             } catch {
-              case s: dispatch.StatusCode =>
+              case s: dispatch.classic.StatusCode =>
                 log.debug("HTTP error "+ s)
             }
 
