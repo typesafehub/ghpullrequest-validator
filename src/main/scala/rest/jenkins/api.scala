@@ -1,7 +1,7 @@
 package rest
 package jenkins
 
-import dispatch.{ Http => _, _ }
+import dispatch.classic.{ Http => _, _ }
 import net.liftweb.json.{ DefaultFormats, Formats }
 import net.liftweb.json.JsonParser._
 import backend.JenkinsJob
@@ -11,10 +11,10 @@ import backend.JenkinsJob
 class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
 
   protected def makeReq(uri: String) = {
-    val url = dispatch.url("%s/%s" format (jenkinsUrl, uri))
+    val req = url("%s/%s" format (jenkinsUrl, uri))
     auth match {
-      case Some((user, pw)) => url.as_!(user, pw)
-      case _                => url
+      case Some((user, pw)) => req.as_!(user, pw)
+      case _                => req
     }
   }
 
@@ -31,7 +31,7 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
   def buildStatus(job: JenkinsJob, buildNumber: String): Option[BuildStatus] = try {
     val loc = makeReq("job/%s/%s/api/json" format (job.name, buildNumber))
     Some(Http(loc >- parseJsonTo[BuildStatus]))
-  }  catch {case _: dispatch.StatusCode => None}
+  }  catch {case _: dispatch.classic.StatusCode => None}
 
   /** A traversable that lazily pulls build status information from jenkins. */
   def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = {
