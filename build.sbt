@@ -1,12 +1,14 @@
-import com.typesafe.sbt.SbtStartScript
+import AssemblyKeys._
 
-seq(SbtStartScript.startScriptForJarSettings: _*)
+assemblySettings
 
 scalaVersion := "2.10.1"
 
 resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases"
 
 name := "ghpr"
+
+version := "0.2-SNAPSHOT"
 
 organization := "com.typesafe"
 
