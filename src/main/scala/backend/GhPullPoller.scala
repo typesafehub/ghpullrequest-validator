@@ -1,7 +1,7 @@
 package backend
 
 import akka.actor.{ActorRef,Actor, Props, ActorLogging}
-import akka.util.duration._
+import scala.concurrent.duration._
 import rest.github.{API=>GithubAPI}
 import util.control.Exception.catching
 

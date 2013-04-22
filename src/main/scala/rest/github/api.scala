@@ -1,7 +1,7 @@
 package rest
 package github
 
-import dispatch.{Http => _, _}
+import dispatch.classic.{Http => _, _}
 
 object Authenticate {
   val USER_AGENT = "github.com/typesafehub/ghpullrequest-validator; thanks for breaking me again, github"

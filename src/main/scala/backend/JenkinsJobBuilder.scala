@@ -2,7 +2,6 @@ package backend
 
 import akka.actor.{Actor, ActorRef, ActorSystem, ActorLogging, Props}
 import rest.jenkins.{API => JenkinsAPI}
-import akka.util.duration._
 import rest.jenkins.BuildStatus
 
 // External Messages

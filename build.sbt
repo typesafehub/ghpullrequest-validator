@@ -1,17 +1,22 @@
-import com.typesafe.startscript.StartScriptPlugin
+import AssemblyKeys._
 
-seq(StartScriptPlugin.startScriptForClassesSettings: _*)
+assemblySettings
+
+scalaVersion := "2.10.1"
 
 resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases"
 
 name := "ghpr"
 
+version := "0.2-SNAPSHOT"
+
 organization := "com.typesafe"
 
+
 libraryDependencies ++= Seq(
-  "net.databinder" % "dispatch-http-json_2.9.1" % "0.8.8",
-  "net.databinder" % "dispatch-http_2.9.1" % "0.8.8",
-  "net.liftweb" % "lift-json_2.9.1" % "2.4-M5",
-  "com.typesafe.akka" % "akka-actor" % "2.0",
-  "com.typesafe" % "config" % "0.4.0"
+  "net.databinder"    %% "dispatch-http-json" % "0.8.9",
+  "net.databinder"    %% "dispatch-http"      % "0.8.9",
+  "net.liftweb"       %% "lift-json"          % "2.5-RC2",
+  "com.typesafe.akka" %% "akka-actor"         % "2.2-M2",
+  "com.typesafe"      % "config"              % "1.0.0"
 )
