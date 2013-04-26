@@ -1,7 +1,7 @@
 # Pull Request Validator
 [Fork me, fix me, anyway you improve me!](https://github.com/typesafehub/ghpullrequest-validator)[*](http://www.youtube.com/watch?v=rpRiSb_Ir-s)
 
-Run me: `sbt run-main GhApp $configFile`
+Run me: `sbt run-main GhApp $configFile` <br>
 Package me (one-jar deploys!): `sbt assembly`
 
 ## Overview
