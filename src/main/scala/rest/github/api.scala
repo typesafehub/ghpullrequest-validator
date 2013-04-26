@@ -3,6 +3,8 @@ package github
 
 import dispatch.classic.{Http => _, _}
 
+// note: it looks like the buildbot github user needs administrative permission to create labels,
+// but also to set the commit status
 object Authenticate {
   val USER_AGENT = "github.com/typesafehub/ghpullrequest-validator; thanks for breaking me again, github"
   private[this] val authorizations = :/("api.github.com").secure / "authorizations" <:< Map("User-Agent" -> USER_AGENT)
@@ -140,9 +142,9 @@ class API(val token: String, val userName: String) {
   }
 
   // POST /repos/:owner/:repo/labels
-  def createLabel(user: String, repo: String, label: Label): List[Label] = {
+  def createLabel(user: String, repo: String, label: Label): Label = {
     val url = makeAPIurl("/repos/%s/%s/labels" format (user, repo))
-    val action = (url.POST << makeJson(label) >- parseJsonTo[List[Label]])
+    val action = (url.POST << makeJson(label) >- parseJsonTo[Label])
     Http(action)
   }
 
@@ -407,7 +409,7 @@ case class IssueComment(body: String) {
 
 case class Label(name: String, color: String = "FFFFFF", url: Option[String] = None) {
   override def equals(o: Any) = o match {
-    case Label(`name`, `color`, _) => true
+    case Label(`name`, _, _) => true
     case _ => false
   }
 }
