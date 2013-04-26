@@ -28,13 +28,15 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor with Ac
 
     val requiredLabels  = Set(Label("reviewed", "02e10c"), Label("tested", "d7e102"), Label("needs-attention", "e10c02"))
     val availableLabels = ghapi.allLabels(ghuser, ghproject).toSet
-    if (availableLabels != requiredLabels) {
-      log.debug("initLabels -- available: "+ availableLabels)
-      log.debug("initLabels -- required: "+ requiredLabels)
 
+    try {
       (requiredLabels -- availableLabels) foreach { l =>
-        log.debug("initLabels -- creating: "+ l +" --> "+ ghapi.createLabel(ghuser, ghproject, l))
+        val created = ghapi.createLabel(ghuser, ghproject, l)
+        log.debug("initLabels -- created $l as $created")
       }
+    } catch {
+      case x@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException)=>
+        log.debug("creating labels failed: "+ x)
     }
   }
 
