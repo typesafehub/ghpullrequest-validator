@@ -2,6 +2,7 @@
 [Fork me, fix me, anyway you improve me!](https://github.com/typesafehub/ghpullrequest-validator)[*](http://www.youtube.com/watch?v=rpRiSb_Ir-s)
 
 Run me: `sbt run-main GhApp $configFile`
+Package me (one-jar deploys!): `sbt assembly`
 
 ## Overview
 The Pull Request Validator (PRV) is the middle man between GitHub and Jenkins. It can monitor multiple GitHub repositories and Jenkins instances.
@@ -59,18 +60,68 @@ This command removes all failure comments added to this PR's commits:
   - `NOLITTER!`
 
 ## Configuration
+The github user that corresponds to the PR validator needs the *Administrative* permission (to create labels and set commit statuses).
+
 TODO: Login info for GitHub and Jenkins. Jenkins jobs to build for every commit.
 
-## Configuration for scala/scala
-For [scala/scala](https://github.com/scala/scala), the validator is managed by @adriaanm. It appears on GitHub as scala-jenkins.
+### Configuration for scala/scala
+For [scala/scala](https://github.com/scala/scala), the validator is managed by @adriaanm.
+It appears on GitHub as scala-jenkins.
 
 The following Jenkins jobs are involved:
 
   - [pr-rangepos-per-commit](https://scala-webapps.epfl.ch/jenkins/job/pr-rangepos-per-commit/)
   - [pr-checkin-per-commit](https://scala-webapps.epfl.ch/jenkins/job/pr-checkin-per-commit/)
 
-They run the eponymous checkin ant job after doing a detached git checkout of the specified commit, unless the commit has already been merged into one of the master-like branches (i.e., any public branch on scala/scala: master, 2.9.x, 2.10.x, 2.10.1,...). This is to avoid killing Jenkins over a PR that merges e.g., 2.10.x into master. We assume anything merged into these branches has been signed off by the PRV in the first place. Finally, when the given commit corresponds to the PR's branch's HEAD, it will be merged into the PR's target branch so that integration is tested.
+They run the eponymous checkin ant job after doing a detached git checkout of the specified commit, 
+unless the commit has already been merged into one of the master-like branches 
+(i.e., any public branch on scala/scala: master, 2.9.x, 2.10.x, 2.10.1,...). 
+This is to avoid killing Jenkins over a PR that merges e.g., 2.10.x into master. 
+We assume anything merged into these branches has been signed off by the PRV in the first place. 
 
+Finally, when the given commit corresponds to the PR's branch's HEAD, it will be merged into the PR's target branch,
+so that integration is tested.
+
+The following script is used by these jenkins jobs:
+
+```
+#!/bin/bash
+
+if [[ -d jenkins-scripts ]]; then
+  ( cd jenkins-scripts && git reset --hard && git clean -fxd . && git checkout -f master && git pull git://github.com/adriaanm/jenkins-scripts.git master)
+else
+  git clone git://github.com/adriaanm/jenkins-scripts.git
+fi
+
+JOB=scala-checkin
+
+export pullrequest mergebranch sha JOB
+. ./jenkins-scripts/job/per-commit
+```
+
+## Deployment
+After running `sbt assembly`, copy the jar in `target` to the server, let's say in `~ubuntu/ghpr2/`.
+
+We're using upstart to keep the bot running, here's what `cat /etc/init/ghpr2.conf` says:
+
+```
+start on runlevel [2345]
+
+author adriaan.moors@typesafe.com
+setuid ubuntu
+
+script
+  export CONFIG="<config files>"
+
+  export JOPTS="-Xmx512m"
+  export VERSION="0.2-SNAPSHOT"
+
+  cd /home/ubuntu/ghpr2
+  java $JOPTS -jar ghpr-assembly-$VERSION.jar $CONFIG
+end script
+```
+
+Launch it with `initctl start ghpr2`, examine logs in `/var/log/upstart/ghpr2.log`
 
 ## Known Issues
 There are some known issues, waiting to be fixed:
