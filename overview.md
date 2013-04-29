@@ -99,7 +99,10 @@ export pullrequest mergebranch sha JOB
 . ./jenkins-scripts/job/per-commit
 ```
 
-## Deployment
+## Adding your project
+Simply put your `.ghpr` config in `~ubuntu/ghpr2` and restart using `initctl restart ghpr2`.
+
+## Deploying a new build
 After running `sbt assembly`, copy the jar in `target` to the server, let's say in `~ubuntu/ghpr2/`.
 
 We're using upstart to keep the bot running, here's what `cat /etc/init/ghpr2.conf` says:
@@ -111,12 +114,12 @@ author adriaan.moors@typesafe.com
 setuid ubuntu
 
 script
-  export CONFIG="<config files>"
-
-  export JOPTS="-Xmx512m"
-  export VERSION="0.2-SNAPSHOT"
-
   cd /home/ubuntu/ghpr2
+
+  export VERSION="0.2-SNAPSHOT"
+  export CONFIG="$(find . -name '*.ghpr')"
+  export JOPTS="-Xmx512m"
+
   java $JOPTS -jar ghpr-assembly-$VERSION.jar $CONFIG
 end script
 ```
