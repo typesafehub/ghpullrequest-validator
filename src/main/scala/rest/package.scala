@@ -11,7 +11,7 @@ package object rest {
 
   /** May be used directly from any thread. */
   import org.apache.http.auth.AuthScope
-  object Http extends LoggingHttp with NoLogging with thread.Safety {
+  object Http extends LoggingHttp with NoLogging with thread.Safety with HttpsLeniency {
     type CurrentCredentials = util.DynamicVariable[Option[(AuthScope, Credentials)]]
     // https://groups.google.com/forum/#!topic/dispatch-scala/RCtWZ5ZJuYo/discussion
     import org.apache.http.params.CoreConnectionPNames
