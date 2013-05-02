@@ -12,11 +12,13 @@ import rest.github.CommitStatus
  *
  * Note: This only helps the PulLRequestValidator actors and should not be used stand-alone.
  */
-class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, sha: String, notify: ActorRef) extends Actor with ActorLogging {
+class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, shaMaybeShort: String, notify: ActorRef) extends Actor with ActorLogging {
   val SPURIOUS_REBUILD = "SPURIOUS ABORT?"
 
   private val user = pull.base.repo.owner.login
   private val repo = pull.base.repo.name
+
+  lazy val sha = ghapi.normalizeSha(user, repo, shaMaybeShort)
 
   def addStatus(status: CommitStatus) = {
     if (!ghapi.commitStatus(user, repo, sha).take(1).contains(status)) {
@@ -108,7 +110,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       //   (having an error/pending status without corresponding success).
       if (ok) {
         val commits      = ghapi.pullrequestcommits(user, repo, pull.number.toString)
-        val priorCommits = if (commits.lengthCompare(1) > 0 && commits.last.shaMatches(sha)) commits.init else Nil
+        val priorCommits = if (commits.lengthCompare(1) > 0 && commits.last.sha == sha) commits.init else Nil
         CommitStatus.overruleSuccess(ghapi, user, repo, sha,
           job.name, status.url, message, priorCommits) foreach addStatus
       }
