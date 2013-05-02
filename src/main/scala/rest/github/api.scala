@@ -165,6 +165,20 @@ class API(val token: String, val userName: String) {
     Http(action)
   }
 
+  // Normalize sha if it's not 40 chars
+  // GET /repos/:owner/:repo/commits/:sha
+  def normalizeSha(user: String, repo: String, sha: String): String =
+    if (sha.length == 40) sha
+    else try {
+      val url = makeAPIurl(s"/repos/$user/$repo/commits/$sha")
+      val action = url >- (x => parseJsonTo[PRCommit](x).sha)
+      Http(action)
+    } catch {
+      case e: Exception =>
+        println(s"Error: couldn't normalize $sha (for $user/$repo): "+ e)
+        sha
+    }
+
   // DELETE /repos/:owner/:repo/comments/:id
   def deleteCommitComment(user: String, repo: String, id: String): Unit = {
     val url = makeAPIurl("/repos/%s/%s/comments/%s" format (user, repo, id))
