@@ -28,10 +28,15 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
     Http(action >- identity[String])
   }
 
-  def buildStatus(job: JenkinsJob, buildNumber: String): Option[BuildStatus] = try {
-    val loc = makeReq("job/%s/%s/api/json" format (job.name, buildNumber))
-    Some(Http(loc >- parseJsonTo[BuildStatus]))
-  }  catch {case _: dispatch.classic.StatusCode => None}
+  def buildStatus(job: JenkinsJob, buildNumber: String): Option[BuildStatus] =
+    try {
+      val loc = makeReq("job/%s/%s/api/json" format (job.name, buildNumber))
+      Some(Http(loc >- parseJsonTo[BuildStatus]))
+    } catch {
+      case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
+        println(s"Could not get status for $job/$buildNumber: "+ e)
+        None
+    }
 
   /** A traversable that lazily pulls build status information from jenkins. */
   def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = {
