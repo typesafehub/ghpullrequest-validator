@@ -34,17 +34,25 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
       Some(Http(loc >- parseJsonTo[BuildStatus]))
     } catch {
       case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
-        println(s"Could not get status for $job/$buildNumber: "+ e)
+        println(s"Error: could not get status for $job/$buildNumber: "+ e)
         None
     }
 
   /** A traversable that lazily pulls build status information from jenkins. */
-  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = {
+  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = try {
     val info = Http(makeReq("job/%s/api/json" format (job.name)) >- parseJsonTo[Job])
     val reportedBuilds = info.builds.sorted
 
     // hack: retrieve queued jobs from queue/api/json
-    val queuedStati = Http(makeReq("queue/api/json") >- parseJsonTo[Queue]).items.filter(_.jobName == job.name).map(_.toStatus)
+    val queuedStati =
+      try {
+        Http(makeReq("queue/api/json") >- parseJsonTo[Queue]).items.filter(_.jobName == job.name).map(_.toStatus)
+      } catch {
+        case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
+          println(s"Error: could not get queued jobs for $job: "+ e)
+          Nil
+      }
+
 
     // work around https://issues.jenkins-ci.org/browse/JENKINS-15583 -- jenkins not reporting all running builds
     // so hack it by closing the range from the last reported build to the lastBuild in the Json response, which is correct
@@ -69,7 +77,12 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
 
     // queued items must come first, they have been added more recently or they wouldn't have been queued
     queuedStati.toStream ++ allBuilds.reverse.toStream.flatMap(b => buildStatus(job, b.number))
+  } catch {
+    case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
+      println(s"Error: could not get buildStatusForJob for $job: "+ e)
+      Stream.empty[BuildStatus]
   }
+
 }
 
 object API {
