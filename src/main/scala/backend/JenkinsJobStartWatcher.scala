@@ -19,14 +19,8 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
   def receive: Receive = {
     case ReceiveTimeout =>
-      // jobs for this PR, sha, mergebranch (all params must match)
-      val ourJobs = api.buildStatusForJob(b.job).filter { status =>
-        val paramsForOurArgs = status.actions.parameters.collect {
-          case rest.jenkins.Param(n, v) if b.args.isDefinedAt(n) => (n, v)
-        }.toMap
-
-        paramsForOurArgs == b.args
-      }
+      // jobs for this PR, sha, mergebranch (for each arg in b.args, there must be a matching param in the job)
+      val ourJobs = api.buildStatusForJob(b.job, b.args)
 
       // where's our build? if there are building jobs, look at those
       // if not, shift our gaze to queued or finished jobs
