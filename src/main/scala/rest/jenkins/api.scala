@@ -38,8 +38,11 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
         None
     }
 
-  /** A traversable that lazily pulls build status information from jenkins. */
-  def buildStatusForJob(job: JenkinsJob): Stream[BuildStatus] = try {
+  /** A traversable that lazily pulls build status information from jenkins.
+   *
+   * Only statuses for the specified job (`job.name`) that have parameters that match all of `expectedArgs`
+   */
+  def buildStatusForJob(job: JenkinsJob, expectedArgs: Map[String,String]): Stream[BuildStatus] = try {
     val info = Http(makeReq("job/%s/api/json" format (job.name)) >- parseJsonTo[Job])
     val reportedBuilds = info.builds.sorted
 
@@ -76,7 +79,14 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
     }
 
     // queued items must come first, they have been added more recently or they wouldn't have been queued
-    queuedStati.toStream ++ allBuilds.reverse.toStream.flatMap(b => buildStatus(job, b.number))
+    val all = queuedStati.toStream ++ allBuilds.reverse.toStream.flatMap(b => buildStatus(job, b.number))
+    all.filter { status =>
+      val paramsForExpectedArgs = status.actions.parameters.collect {
+        case Param(n, Some(v)) if expectedArgs.isDefinedAt(n) => (n, v)
+      }.toMap
+
+      paramsForExpectedArgs == expectedArgs
+    }
   } catch {
     case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
       println(s"Error: could not get buildStatusForJob for $job: "+ e)
@@ -102,7 +112,8 @@ case class Build(number: String, url: String) extends Ordered[Build] {
   def compare(that: Build) = this.num - that.num
 }
 
-case class Param(name: String, value: String) {
+// value is optional: password-valued parameters hide their value
+case class Param(name: String, value: Option[String]) {
   override def toString = "%s -> %s" format (name, value)
 }
 case class Actions(parameters: List[Param]) {
