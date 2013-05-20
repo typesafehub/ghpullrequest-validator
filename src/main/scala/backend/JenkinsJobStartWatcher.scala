@@ -11,11 +11,12 @@ import rest.jenkins.BuildStatus
 // TODO - We need a new way to detect a job has started...
 class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: ActorRef) extends Actor with ActorLogging {
   // Set timeout to check when the job has started.
-  context setReceiveTimeout (1 minute)
+  context setReceiveTimeout (15 seconds)
 
   private val seenBuilds = collection.mutable.HashSet[String]()
   // we only try to start a build once, if that fails, we'll time out and try again
-  private var startedBuild = false
+  private[this] var startedBuild = false
+  private[this] var retryCount = 12 // if jenkins hasn't at least queued our job 3 mins later, something is wrong
 
   def receive: Receive = {
     case ReceiveTimeout =>
@@ -60,6 +61,13 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         startedBuild = true
         api.buildJob(b.job, b.args)
         log.debug("Started job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+      } else {
+        retryCount -= 1
+        if (retryCount == 0) {
+          log.debug("Failed to start job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+          jenkinsService ! b // retry the build
+          context stop self
+        }
       }
   }
 

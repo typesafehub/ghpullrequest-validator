@@ -26,8 +26,9 @@ object GhApp extends scala.App {
     system addConfig c
   }
   
-  // start checking projects' pull requests every 15 minutes
-  system startChecking 15
+  // start checking projects' pull requests every 10 minutes (down from known to be safe 15)
+  // can't do it faster as we hit rate limits when using a 5 minute interval
+  system startChecking 10
 
   // Pull either the specified configuration files, or nothing.  
   def configFiles: Seq[java.io.File] = 
