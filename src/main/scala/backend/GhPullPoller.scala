@@ -20,23 +20,26 @@ class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor with Ac
   def receive: Receive = {
     case CheckPullRequests(user, proj) =>
       initLabels(user, proj)
-      checkPullRequests(user, proj)
+      try checkPullRequests(user, proj)
+      catch { case x: dispatch.classic.StatusCode =>
+        log.error(s"Checking PRs on $user/$proj failed -- does the build bot lack admin permission?\n"+ x)
+      }
   }
   
   private def initLabels(ghuser: String, ghproject: String) = {
     import rest.github.Label
 
     val requiredLabels  = Set(Label("reviewed", "02e10c"), Label("tested", "d7e102"), Label("needs-attention", "e10c02"))
-    val availableLabels = ghapi.allLabels(ghuser, ghproject).toSet
 
     try {
+      val availableLabels = ghapi.allLabels(ghuser, ghproject).toSet
       (requiredLabels -- availableLabels) foreach { l =>
         val created = ghapi.createLabel(ghuser, ghproject, l)
         log.debug("initLabels -- created $l as $created")
       }
     } catch {
-      case x@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException)=>
-        log.debug("creating labels failed: "+ x)
+      case x: net.liftweb.json.MappingException =>
+        log.error(s"creating labels for $ghuser/$ghproject failed: "+ x)
     }
   }
 
