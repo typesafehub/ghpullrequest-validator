@@ -19,7 +19,7 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String
   def receive: Receive = {
     case ReceiveTimeout =>
       api.buildStatus(build.job, buildnumber) foreach { status =>
-        if (status.building) context setReceiveTimeout (backoff minutes)
+        if (status.building) context setReceiveTimeout ((backoff * 30) seconds)
         else {
           log.debug("Job finished! " + build.job.name + " - " + status)
 
@@ -30,5 +30,5 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String
   }
 
   /** A timeout timer that wakes us up to check build status. */
-  context setReceiveTimeout (2 minutes)
+  context setReceiveTimeout (15 seconds)
 }
