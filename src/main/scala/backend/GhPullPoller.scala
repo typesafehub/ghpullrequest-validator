@@ -9,13 +9,13 @@ import util.control.Exception.catching
 /** A class that continually polls github for pull requests and notifies
  * a listener when they are discovered.
  */
-class GhPullPoller(ghapi: GithubAPI, listenerProps: Props) extends Actor with ActorLogging {
+class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Actor with ActorLogging {
   
-  // Create the listener of pull request checks as a nested actor so its failures
+  // Create the pull request checker as a nested actor so its failures
   // get reported to us.
   // TODO - better way of disassociating these two...
   // Perhaps an actor that just grabs pull requests and sends messages for them...
-  val listener = context actorOf listenerProps
+  val listener = context actorOf pullRequestCheckerProps
   
   def receive: Receive = {
     case CheckPullRequests(user, proj) =>
