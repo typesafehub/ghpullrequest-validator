@@ -99,7 +99,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       val myStatus = CommitStatus.jobEnded(job.name, status.url, ok, message)
       addStatus(myStatus)
       notify ! CommitDone(pull, sha, job, ok)
-      context stop self
 
       // We want to ensure that a PR is only ok if all commits and all jobs are ok.
       // Unfortunately, GitHub only looks at the most recent status of the last commit of the PR to determine the status of the whole PR.
@@ -113,6 +112,8 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
         val priorCommits = if (commits.lengthCompare(1) > 0 && commits.last.sha == sha) commits.init else Nil
         CommitStatus.overruleSuccess(ghapi, user, repo, sha,
           job.name, status.url, message, priorCommits) foreach addStatus
+
+        context stop self // can only stop on success -- if we got a failure result, we may still get a later success
       }
   }
 }
