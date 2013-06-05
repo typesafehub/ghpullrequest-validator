@@ -31,16 +31,28 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
   
   def receive: Receive = {
     case CheckPullRequest(pull, branchToMS) =>
-      checkMilestone(pull, branchToMS)
-      checkLGTM(pull)
-      checkPullRequest(pull)
-      checkSuccess(pull)
+      try {
+        checkMilestone(pull, branchToMS)
+        checkLGTM(pull)
+        checkPullRequest(pull)
+        checkSuccess(pull)
+      } catch {
+        case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
+          log.error(s"Problem while checking ${pull.base.repo.name}#${pull.number} ($pull)\n$x")
+          throw x
+      }
     case CommitDone(pull, sha, job, success) =>
-      if(success) checkSuccess(pull)
-      else needsAttention(pull)
+      try {
+        if(success) checkSuccess(pull)
+        else needsAttention(pull)
 
-      active.-=((sha, job))
-      forced.-=((sha, job))
+        active.-=((sha, job))
+        forced.-=((sha, job))
+      } catch {
+        case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
+          log.error(s"Problem while marking ${pull.base.repo.name}#${pull.number} as done ($pull)\n$x")
+          throw x
+      }
   }
 
   // if there's a milestone with description "Merge to ${pull.base.ref}.", set it as the PR's milestone
