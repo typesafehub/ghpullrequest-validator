@@ -54,6 +54,10 @@ The following command will add a comment that renders the information stored in 
 
   - `BUILDLOG?`
 
+You can also make the bot look for builds again and update the commit statuses accordingly:
+  
+  - `PLS SYNCH`
+
 ### Cleaning up
 This command removes all failure comments added to this PR's commits:
 
@@ -99,8 +103,12 @@ export pullrequest mergebranch sha JOB
 . ./jenkins-scripts/job/per-commit
 ```
 
-## Adding your project
+## Adding or changing your project
 Simply put your `.ghpr` config in `~ubuntu/ghpr2` and restart using `initctl restart ghpr2`.
+Config files are tracked in git. Please create commits for updates or new projects.
+
+## Diagnosing problems
+The logs are in `/var/log/upstart/ghpr2.log` (ubuntu@buildbot.typesafe.com).
 
 ## Deploying a new build
 After running `sbt assembly`, copy the jar in `target` to the server, let's say in `~ubuntu/ghpr2/`.
