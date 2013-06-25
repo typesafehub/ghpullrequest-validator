@@ -131,11 +131,8 @@ case class BuildStatus(number: String,
   assert(!(building && queued), "Cannot both be building and queued.")
 
   def queued = false
-  def isSuccess = result == "SUCCESS"
+  def isSuccess = !building && result == "SUCCESS"
 
-  // TODO - Is this ok to assume?  
-  def timestampDate =
-    new java.util.Date(timestamp.toLong)
 }
 
 case class Queue(items: List[QueueItem])
