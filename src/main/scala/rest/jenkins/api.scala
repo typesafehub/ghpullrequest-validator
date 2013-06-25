@@ -133,9 +133,6 @@ case class BuildStatus(number: String,
   def queued = false
   def isSuccess = !building && result == "SUCCESS"
 
-  // TODO - Is this ok to assume?  
-  def timestampDate =
-    new java.util.Date(timestamp.toLong)
 }
 
 case class Queue(items: List[QueueItem])
