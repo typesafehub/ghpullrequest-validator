@@ -4,6 +4,7 @@ import akka.actor.{ Actor, ActorRef, ActorSystem, Props, ActorLogging, ReceiveTi
 import rest.jenkins.{ API => JenkinsAPI }
 import scala.concurrent.duration._
 import rest.jenkins.BuildStatus
+import scala.util.control.Exception
 
 /** A class that watches for a job to begin on jenkins and then
  *  notifies the jenkinsService that the job has started.
@@ -12,6 +13,14 @@ import rest.jenkins.BuildStatus
 class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: ActorRef) extends Actor with ActorLogging {
   // Set timeout to check when the job has started.
   context setReceiveTimeout (15 seconds)
+
+  /* The time this instance was started
+   *
+   * We use it to suppress commenting about a build that finished before this actor was started
+   */
+  private val selfTimestamp = java.util.Calendar.getInstance().getTimeInMillis()
+
+  private val timeEpsilon = 600 // 10 minutes should be enough of a margin
 
   private val seenBuilds = collection.mutable.HashSet[String]()
   // we only try to start a build once, if that fails, we'll time out and try again
@@ -47,7 +56,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
       // done after sending BuildStarted so that (hopefully) this status is more recent
       done foreach { status =>
-        b.commenter ! BuildResult(status)
+        val statusTimestamp = Exception.failAsValue(classOf[NumberFormatException])(selfTimestamp) { status.timestamp.toLong }
+
+        // only comment if the build was triggered after the actor was spawned
+        if (statusTimestamp + timeEpsilon > selfTimestamp)
+          b.commenter ! BuildResult(status)
       }
 
       seenBuilds ++= newlyDiscovered.map(_.url)
