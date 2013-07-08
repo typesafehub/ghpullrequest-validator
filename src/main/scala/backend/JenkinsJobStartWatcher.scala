@@ -23,15 +23,6 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       // jobs for this PR, sha, mergebranch (for each arg in b.args, there must be a matching param in the job)
       val ourJobs = api.buildStatusForJob(b.job, b.args)
 
-      // where's our build? if there are building jobs, look at those
-      // if not, shift our gaze to queued or finished jobs
-      val relevantBuilds = ourJobs.filter(_.building) match {
-        case bs if bs.isEmpty =>
-          log.debug("No building jobs for " + b.job + " #" + b.args("pullrequest") + " commit " + b.args("sha") + " all jobs: " + ourJobs)
-          ourJobs.headOption.toSet // if no running builds, just look at the most recent one
-        case bs => bs.toSet
-      }
-
       val newlyDiscovered = ourJobs.filterNot(bs => seenBuilds(bs.url))
 
       val (buildingOrQueued, done) = newlyDiscovered.partition(st => st.building || st.queued)
