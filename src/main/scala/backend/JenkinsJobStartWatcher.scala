@@ -60,11 +60,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       else if (!b.noop && !startedBuild && !isQueued) {
         startedBuild = true
         api.buildJob(b.job, b.args)
-        log.debug("Started job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+        log.debug(s"OK $b")
       } else {
         retryCount -= 1
         if (retryCount == 0) {
-          log.debug("Failed to start job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+          log.error(s"FAILED $b")
           jenkinsService ! b // retry the build
           context stop self
         }
