@@ -59,6 +59,12 @@ class API(val token: String, val userName: String) {
     Http(action)
   } 
 
+  def closedPullrequests(user: String, repo: String): List[PullMini] = {
+    val url = makeAPIurl("/repos/%s/%s/pulls?per_page=100&state=closed" format (user,repo))
+    val action = url >- parseJsonTo[List[PullMini]]
+    Http(action)
+  }
+
   /** Grabs the information for a single pull request. */
   def pullrequest(user: String, repo: String, number: String): Pull = {
     val url = makeAPIurl("/repos/%s/%s/pulls/%s?per_page=100" format (user,repo,number))
