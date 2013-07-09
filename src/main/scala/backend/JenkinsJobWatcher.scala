@@ -6,7 +6,7 @@ import scala.concurrent.duration._
 
 /** An actor that watches a specific job and returns its status when the job is completed. */
 class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String) extends Actor with ActorLogging {
-  log.debug("Watching for job finish: " + buildnumber)
+  log.info(s"Waiting for end of $build [$buildnumber].")
   private var _backoff = 1
   def backoff: Int =
     if (_backoff >= 8) 8
@@ -21,7 +21,7 @@ class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String
       api.buildStatus(build.job, buildnumber) foreach { status =>
         if (status.building) context setReceiveTimeout ((backoff * 30) seconds)
         else {
-          log.debug("Job finished! " + build.job.name + " - " + status)
+          log.info(s"Done: $build --> $status.")
 
           build.commenter ! BuildResult(status)
           context stop self

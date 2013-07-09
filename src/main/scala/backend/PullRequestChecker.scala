@@ -143,11 +143,6 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     // forced jobs are also only started once, but tracked separately from active jobs
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) =
       if ( (force && !forced(sha, job)) || !active(sha, job)) {
-        if (noop)
-          log.debug("Looking for build of "+ sha +" in #"+ pull.number +" job: "+ job)
-        else
-          log.debug("May build commit "+ sha +" for #"+ pull.number +" job: "+ job)
-
         active.+=((sha, job))
         forced.+=((sha, job))
         val forcedUniq = if (force) "-forced" else ""

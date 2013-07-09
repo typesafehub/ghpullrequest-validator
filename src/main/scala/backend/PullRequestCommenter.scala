@@ -22,7 +22,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
   def addStatus(status: CommitStatus) = {
     if (!ghapi.commitStatus(user, repo, sha).take(1).contains(status)) {
-      log.debug("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
+      log.info("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(6) + " at " + status.target_url.getOrElse(""))
       Thread sleep (scala.util.Random.nextFloat * 5000).toInt // randomly sleep up to 5s to avoid setting multiple statuses with exactly the same timestamp
       ghapi.setCommitStatus(user, repo, sha, status)
     } else
@@ -43,9 +43,6 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
           case _: Exception => line
         }})
 
-      val duration = try { status.duration.toInt / 1000 } catch { case x: Exception => 0 }
-      val durationReport = "Took " + (if (duration < 120) duration + " s." else (duration / 60) + " min.")
-
       val message =
         status.result match {
           case "FAILURE" =>
@@ -62,7 +59,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
             val message = jobDesc +" [(results)]("+ status.url +"):\n"+
               (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
-              "<br>"+ durationReport +
+              "<br>"+ status.friendlyDuration +
               """<br> to rebuild, comment "PLS REBUILD/"""+ job.name + "@"+ sha+ """" on PR """+ pull.number // not referencing the PR github-style as that causes lots of noise
 
             log.debug("Failed: "+ message)
@@ -76,12 +73,12 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
                 ghapi.addCommitComment(user, repo, sha, message)
             } catch {
               case s: dispatch.classic.StatusCode =>
-                log.debug("HTTP error "+ s)
+                log.error("HTTP error "+ s)
             }
 
             val testReport = if (failedTests.nonEmpty) (failedTests.length+ " failures. ") else ""
 
-            " failed: "+ testReport + durationReport
+            " failed: "+ testReport + status.friendlyDuration
 
           case "ABORTED" =>
             // if aborted and not rebuilt before, try rebuilding
@@ -92,7 +89,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
             "Build aborted."
           case _ =>
-            durationReport
+            status.friendlyDuration
         }
 
       val ok = status.result == "SUCCESS"
