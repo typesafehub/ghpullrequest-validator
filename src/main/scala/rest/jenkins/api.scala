@@ -130,7 +130,7 @@ case class BuildStatus(number: String,
 
   assert(!(building && queued), "Cannot both be building and queued.")
 
-  lazy val friendlyDuration = {
+  def friendlyDuration = {
     val seconds = try { duration.toInt / 1000 } catch { case x: Exception => 0 }
     "Took " + (if (seconds <= 90) seconds + " s." else (seconds / 60) + " min.")
   }

@@ -412,8 +412,8 @@ object CommitStatus {
       case _ =>
         Nil
     }
-    println("notDoneOk grouped: "+ grouped.mkString("\n"))
-    println("problems: "+ problems)
+    // println("notDoneOk grouped: "+ grouped.mkString("\n"))
+    // println("problems: "+ problems)
     problems
   }
 }
