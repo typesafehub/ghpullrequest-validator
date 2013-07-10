@@ -31,7 +31,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         else ourJobs.filter(job => job.building || job.queued)
 
       if (retryCount > 6 && relevantBuilds.isEmpty)
-        log.warning("No building jobs for $b.\nAll jobs: " + ourJobs)
+        log.warning(s"No building jobs for $b.\nAll jobs: " + ourJobs)
 
       val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
 
