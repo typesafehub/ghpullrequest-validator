@@ -458,5 +458,7 @@ case class Milestone(number: Int, title: String, description: String) {
   private val regex = "Merge to (\\S*)".r
   private def stripFinalDot(s: String) = (if(s.nonEmpty && s.last == '.') s.init else s).trim
 
-  def mergeBranch = regex.findFirstMatchIn(description).flatMap(m => m.subgroups.headOption.map(stripFinalDot))
+  def mergeBranch =
+    try regex.findFirstMatchIn(description).flatMap(m => m.subgroups.headOption.map(stripFinalDot))
+    catch { case _: NullPointerException => None } // no idea how this happens, no time to find out
 }
