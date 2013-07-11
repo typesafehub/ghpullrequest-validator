@@ -59,6 +59,12 @@ class API(val token: String, val userName: String) {
     Http(action)
   } 
 
+  def closedPullrequests(user: String, repo: String): List[PullMini] = {
+    val url = makeAPIurl("/repos/%s/%s/pulls?per_page=100&state=closed" format (user,repo))
+    val action = url >- parseJsonTo[List[PullMini]]
+    Http(action)
+  }
+
   /** Grabs the information for a single pull request. */
   def pullrequest(user: String, repo: String, number: String): Pull = {
     val url = makeAPIurl("/repos/%s/%s/pulls/%s?per_page=100" format (user,repo,number))
@@ -273,6 +279,8 @@ case class Pull(
   def branch = head.label.replace(':', '/')
   def date   = updated_at takeWhile (_ != 'T')
   def time   = updated_at drop (date.length + 1)
+
+  override def toString = s"${base.repo.owner.login}/${base.repo.name}#$number"
 }
 
 case class Issue(milestone: Option[Milestone])
@@ -406,8 +414,8 @@ object CommitStatus {
       case _ =>
         Nil
     }
-    println("notDoneOk grouped: "+ grouped.mkString("\n"))
-    println("problems: "+ problems)
+    // println("notDoneOk grouped: "+ grouped.mkString("\n"))
+    // println("problems: "+ problems)
     problems
   }
 }
@@ -452,5 +460,7 @@ case class Milestone(number: Int, title: String, description: String) {
   private val regex = "Merge to (\\S*)".r
   private def stripFinalDot(s: String) = (if(s.nonEmpty && s.last == '.') s.init else s).trim
 
-  def mergeBranch = regex.findFirstMatchIn(description).flatMap(m => m.subgroups.headOption.map(stripFinalDot))
+  def mergeBranch =
+    try regex.findFirstMatchIn(description).flatMap(m => m.subgroups.headOption.map(stripFinalDot))
+    catch { case _: NullPointerException => None } // no idea how this happens, no time to find out
 }

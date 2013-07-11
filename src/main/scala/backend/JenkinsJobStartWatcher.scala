@@ -11,64 +11,85 @@ import rest.jenkins.BuildStatus
 // TODO - We need a new way to detect a job has started...
 class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: ActorRef) extends Actor with ActorLogging {
   // Set timeout to check when the job has started.
-  context setReceiveTimeout (15 seconds)
+  context setReceiveTimeout (20 seconds)
+
+  // we only try to start a build once, if that fails, we'll time out and try again
+  // we never start one if the BuildCommit message resulted from a PLS SYNCH (`b.noop`)
+  private[this] var startBuildTODO = !b.noop
+  private[this] var retryCount = 12 // if jenkins hasn't at least queued our job 4 mins (= 12 timeouts) later, something is wrong and we retry
 
   private val seenBuilds = collection.mutable.HashSet[String]()
-  // we only try to start a build once, if that fails, we'll time out and try again
-  private[this] var startedBuild = false
-  private[this] var retryCount = 12 // if jenkins hasn't at least queued our job 3 mins later, something is wrong
+  private def updateOtherActors(relevantBuilds: Stream[BuildStatus]) = {
+    val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
 
+    val (buildingOrQueued, finished) = newlyDiscovered.partition(st => st.building || st.queued)
+
+    buildingOrQueued foreach { status =>
+      if (status.queued)
+        b.commenter ! BuildQueued
+      else {
+        jenkinsService ! JobStarted(b, status)
+        b.commenter ! BuildStarted(status.url)
+      }
+    }
+
+    // finished jobs are handled after sending BuildStarted so that (hopefully) this status is more recent
+    // NOTE: these are expected to be empty, and are definitely empty when retryCount > 6 (the first half or this actor's lifespan)
+    finished foreach { status =>
+      b.commenter ! BuildResult(status)
+    }
+
+    seenBuilds ++= newlyDiscovered.map(_.url)
+  }
+
+  private val prehistoricBuilds = collection.mutable.HashSet[BuildStatus]()
   def receive: Receive = {
     case ReceiveTimeout =>
-      // jobs for this PR, sha, mergebranch (for each arg in b.args, there must be a matching param in the job)
-      val ourJobs = api.buildStatusForJob(b.job, b.args)
+      // all build statuses for this PR, sha, mergebranch (for each arg in b.args, there must be a matching param in the job)
+      val allBuilds = api.buildStatusForJob(b.job, b.args)
 
-      // where's our build? if there are building jobs, look at those
-      // if not, shift our gaze to queued or finished jobs
-      val relevantBuilds = ourJobs.filter(_.building) match {
-        case bs if bs.isEmpty =>
-          log.debug("No building jobs for " + b.job + " #" + b.args("pullrequest") + " commit " + b.args("sha") + " all jobs: " + ourJobs)
-          ourJobs.headOption.toSet // if no running builds, just look at the most recent one
-        case bs => bs.toSet
-      }
+      // building or queued
+      val currentBuilds = allBuilds.filter(bs => bs.building || bs.queued)
 
-      val newlyDiscovered = ourJobs.filterNot(bs => seenBuilds(bs.url))
+      // only consider building or queued jobs if either:
+      //   - we're reacting to a PLS REBUILD (b.force),
+      //   - we haven't been looking that long (retryCount > 6)
+      // else, if we're not running in forced mode, and have been looking for a while,
+      // assume the build we're looking for may have ended, and consider all builds with the expected parameters
+      val reportedBuilds =
+        if (b.force || retryCount > 6) currentBuilds else allBuilds
 
-      val (buildingOrQueued, done) = newlyDiscovered.partition(st => st.building || st.queued)
+      updateOtherActors(reportedBuilds)
 
-      buildingOrQueued foreach { status =>
-        if (status.queued)
-          b.commenter ! BuildQueued
-        else {
-          jenkinsService ! JobStarted(b, status)
-          b.commenter ! BuildStarted(status.url)
+      if (retryCount > 6 && currentBuilds.isEmpty)
+        log.warning(s"No active builds for $b.\nAll jobs: " + allBuilds)
+
+      // on our first timeout, we try to start the build if necessary
+      if (startBuildTODO) {
+        startBuildTODO = false
+
+        // if we're running in force mode or we haven't found a running/queued build
+        if (b.force || currentBuilds.isEmpty) {
+          log.debug(s"Attempting $b")
+          prehistoricBuilds ++= allBuilds
+
+          api.buildJob(b.job, b.args)
         }
       }
-
-      // done after sending BuildStarted so that (hopefully) this status is more recent
-      done foreach { status =>
-        b.commenter ! BuildResult(status)
-      }
-
-      seenBuilds ++= newlyDiscovered.map(_.url)
-
-      val canStop = startedBuild || !b.force
-      def foundRunningJob = newlyDiscovered.exists(!_.queued)
-      def isQueued = newlyDiscovered.exists(_.queued)
-
-      if (canStop && foundRunningJob) context stop self
-      else if (!b.noop && !startedBuild && !isQueued) {
-        startedBuild = true
-        api.buildJob(b.job, b.args)
-        log.debug("Started job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
-      } else {
+      // we started a build already, but no modern builds found (ones we hadn't seen before we started our job)
+      else if ((currentBuilds.toSet diff prehistoricBuilds).isEmpty) {
         retryCount -= 1
         if (retryCount == 0) {
-          log.debug("Failed to start job for #" + b.args("pullrequest") + " --> " + b.job.name + " sha: " + b.args("sha"))
+          log.error(s"Failed to start or find started $b")
+
           jenkinsService ! b // retry the build
           context stop self
         }
       }
+      // we found a build
+      else {
+        log.info(s"$b --> ${currentBuilds.head}")
+        context stop self
+      }
   }
-
 }

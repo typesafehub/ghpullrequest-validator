@@ -38,7 +38,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         checkSuccess(pull)
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
-          log.error(s"Problem while checking ${pull.base.repo.name}#${pull.number} ($pull)\n$x")
+          log.error(s"Problem while checking $pull\n$x")
           throw x
       }
     case CommitDone(pull, sha, job, success) =>
@@ -50,7 +50,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         forced.-=((sha, job))
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
-          log.error(s"Problem while marking ${pull.base.repo.name}#${pull.number} as done ($pull)\n$x")
+          log.error(s"Problem while marking $pull as done\n$x")
           throw x
       }
   }
@@ -66,7 +66,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       ghapi.issue(user, repo, pullNum).milestone match {
         case Some(Milestone(_ /*`ghNum`*/, _, _)) => // allow any milestone, don't overwrite
         case _ =>
-          log.debug("Setting milestone of #"+ pullNum +" to "+ milestone.title)
+          log.debug(s"Setting milestone of $pull to ${milestone.title}")
           ghapi.setMilestone(user, repo, pullNum, msNum)
       }
 
@@ -120,7 +120,9 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val success = jenkinsJobs forall (j => commitStati.map{case (_, cs) => CommitStatus.jobDoneOk(cs.filter(_.forJob(j.name)))}.reduce(_ && _))
 
     if (!success)
-      log.debug("checkSuccess failed for #"+ pull.number +" --> "+ commitStati.map{case (sha, sts) => sha.take(8) +": "+ sts.distinct.mkString(", ") }.mkString("\n"))
+      log.debug(s"checkSuccess failed for $pull -->" +
+          commitStati.map{case (sha, sts) => sha.take(6) +": "+ sts.distinct.mkString(", ") }.mkString("\n")
+        )
 
     if (success && !hasTestedLabel) {
       ghapi.addLabel(user, repo, pullNum, List("tested"))
@@ -143,11 +145,6 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     // forced jobs are also only started once, but tracked separately from active jobs
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) =
       if ( (force && !forced(sha, job)) || !active(sha, job)) {
-        if (noop)
-          log.debug("Looking for build of "+ sha +" in #"+ pull.number +" job: "+ job)
-        else
-          log.debug("May build commit "+ sha +" for #"+ pull.number +" job: "+ job)
-
         active.+=((sha, job))
         forced.+=((sha, job))
         val forcedUniq = if (force) "-forced" else ""
@@ -237,6 +234,8 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         }
       }
     }
+
+    log.info(s"Checking $pull (${commits.length} commits).")
 
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha)
