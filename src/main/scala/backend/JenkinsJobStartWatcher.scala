@@ -42,6 +42,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
     seenBuilds ++= newlyDiscovered.map(_.url)
   }
 
+  private val prehistoricBuilds = collection.mutable.HashSet[BuildStatus]()
   def receive: Receive = {
     case ReceiveTimeout =>
       // all build statuses for this PR, sha, mergebranch (for each arg in b.args, there must be a matching param in the job)
@@ -70,17 +71,18 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         // if we're running in force mode or we haven't found a running/queued build
         if (b.force || currentBuilds.isEmpty) {
           log.debug(s"Attempting $b")
+          prehistoricBuilds ++= allBuilds
 
           api.buildJob(b.job, b.args)
         }
       }
-      // we started a build already, but no builds found
-      else if (currentBuilds.isEmpty) {
+      // we started a build already, but no modern builds found (ones we hadn't seen before we started our job)
+      else if ((currentBuilds.toSet diff prehistoricBuilds).isEmpty) {
         retryCount -= 1
         if (retryCount == 0) {
-          jenkinsService ! b // retry the build
-
           log.error(s"Failed to start or find started $b")
+
+          jenkinsService ! b // retry the build
           context stop self
         }
       }
