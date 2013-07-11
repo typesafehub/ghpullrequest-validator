@@ -279,6 +279,8 @@ case class Pull(
   def branch = head.label.replace(':', '/')
   def date   = updated_at takeWhile (_ != 'T')
   def time   = updated_at drop (date.length + 1)
+
+  override def toString = s"${base.repo.owner.login}/${base.repo.name}#$number"
 }
 
 case class Issue(milestone: Option[Milestone])
