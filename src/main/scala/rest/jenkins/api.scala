@@ -130,9 +130,14 @@ case class BuildStatus(number: String,
 
   assert(!(building && queued), "Cannot both be building and queued.")
 
+  def friendlyDuration = {
+    val seconds = try { duration.toInt / 1000 } catch { case x: Exception => 0 }
+    "Took " + (if (seconds <= 90) seconds + " s." else (seconds / 60) + " min.")
+  }
+
   def queued = false
   def isSuccess = !building && result == "SUCCESS"
-
+  override def toString = s"Build $number: $result $friendlyDuration ($url)."
 }
 
 case class Queue(items: List[QueueItem])
