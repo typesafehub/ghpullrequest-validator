@@ -109,10 +109,11 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
         val overrides    = CommitStatus.overruleSuccess(ghapi, user, repo, sha, job.name, status.url, message, priorCommits)
         overrides foreach addStatus
 
-        if (overrides.isEmpty) {
-          log.info(s"Stopping commenter for $job of $pull.")
-          context stop self // can only stop on success -- if we got a failure result, we may still get a later success
-        }
+        // have to stay alive regardless as the job start watcher may call at any time for a PLS SYNCH or a PLS REBUILD ALL
+        // if (overrides.isEmpty) {
+        //   log.info(s"Stopping commenter for $job of $pull.")
+        //   context stop self // can only stop on success -- if we got a failure result, we may still get a later success
+        // }
       }
   }
 }
