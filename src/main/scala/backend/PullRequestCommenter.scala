@@ -22,11 +22,10 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
   def addStatus(status: CommitStatus) = {
     if (!ghapi.commitStatus(user, repo, sha).take(1).contains(status)) {
-      log.info("Status " + status.state + " set for " + job.name + ", #" + pull.number + " on " + sha.take(6) + " at " + status.target_url.getOrElse(""))
+      log.info(s"Set status $status for $job of $pull.")
       Thread sleep (scala.util.Random.nextFloat * 5000).toInt // randomly sleep up to 5s to avoid setting multiple statuses with exactly the same timestamp
       ghapi.setCommitStatus(user, repo, sha, status)
-    } else
-      log.debug("Already set status " + status.state + " for " + job.name + ", #" + pull.number + " on " + sha.take(8) + " at " + status.target_url.getOrElse(""))
+    } else log.info(s"DROPPED status $status for $job of $pull.")
   }
 
   def receive: Receive = {
@@ -107,10 +106,14 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
       if (ok) {
         val commits      = ghapi.pullrequestcommits(user, repo, pull.number.toString)
         val priorCommits = if (commits.lengthCompare(1) > 0 && commits.last.sha == sha) commits.init else Nil
-        CommitStatus.overruleSuccess(ghapi, user, repo, sha,
-          job.name, status.url, message, priorCommits) foreach addStatus
+        val overrides    = CommitStatus.overruleSuccess(ghapi, user, repo, sha, job.name, status.url, message, priorCommits)
+        overrides foreach addStatus
 
-        context stop self // can only stop on success -- if we got a failure result, we may still get a later success
+        // have to stay alive regardless as the job start watcher may call at any time for a PLS SYNCH or a PLS REBUILD ALL
+        // if (overrides.isEmpty) {
+        //   log.info(s"Stopping commenter for $job of $pull.")
+        //   context stop self // can only stop on success -- if we got a failure result, we may still get a later success
+        // }
       }
   }
 }

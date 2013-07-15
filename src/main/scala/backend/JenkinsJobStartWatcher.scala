@@ -22,21 +22,14 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
   private def updateOtherActors(relevantBuilds: Stream[BuildStatus]) = {
     val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
 
-    val (buildingOrQueued, finished) = newlyDiscovered.partition(st => st.building || st.queued)
-
-    buildingOrQueued foreach { status =>
-      if (status.queued)
-        b.commenter ! BuildQueued
-      else {
+    // only look at most recent job (they are ordered by the jenkins in API with the most recent job at the head)
+    newlyDiscovered.headOption foreach { status =>
+      if (status.building) {
         jenkinsService ! JobStarted(b, status)
         b.commenter ! BuildStarted(status.url)
       }
-    }
-
-    // finished jobs are handled after sending BuildStarted so that (hopefully) this status is more recent
-    // NOTE: these are expected to be empty, and are definitely empty when retryCount > 6 (the first half or this actor's lifespan)
-    finished foreach { status =>
-      b.commenter ! BuildResult(status)
+      else if (status.queued) b.commenter ! BuildQueued
+      else b.commenter ! BuildResult(status)
     }
 
     seenBuilds ++= newlyDiscovered.map(_.url)
@@ -57,12 +50,12 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       // else, if we're not running in forced mode, and have been looking for a while,
       // assume the build we're looking for may have ended, and consider all builds with the expected parameters
       val reportedBuilds =
-        if (b.force || retryCount > 6) currentBuilds else allBuilds
+        if (b.force || b.noop || retryCount < 6) allBuilds else currentBuilds
 
       updateOtherActors(reportedBuilds)
 
-      if (retryCount > 6 && currentBuilds.isEmpty)
-        log.warning(s"No active builds for $b.\nAll jobs: " + allBuilds)
+      if (retryCount < 10 && reportedBuilds.isEmpty)
+        log.warning(s"No builds to report for $b.\nAll jobs: " + allBuilds)
 
       // on our first timeout, we try to start the build if necessary
       if (startBuildTODO) {
@@ -77,7 +70,8 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         }
       }
       // we started a build already, but no modern builds found (ones we hadn't seen before we started our job)
-      else if ((currentBuilds.toSet diff prehistoricBuilds).isEmpty) {
+      // when running in no-op mode, `prehistoricBuilds` is irrelevant -- look at `reportedBuilds` instead
+      else if ((if (b.noop) reportedBuilds else (currentBuilds.toSet diff prehistoricBuilds)).isEmpty) {
         retryCount -= 1
         if (retryCount == 0) {
           log.error(s"Failed to start or find started $b")
