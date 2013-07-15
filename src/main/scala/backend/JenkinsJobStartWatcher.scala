@@ -57,12 +57,12 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       // else, if we're not running in forced mode, and have been looking for a while,
       // assume the build we're looking for may have ended, and consider all builds with the expected parameters
       val reportedBuilds =
-        if (b.force || b.noop || retryCount > 6) currentBuilds else allBuilds
+        if (b.force || b.noop || retryCount < 6) allBuilds else currentBuilds
 
       updateOtherActors(reportedBuilds)
 
-      if (retryCount > 6 && currentBuilds.isEmpty)
-        log.warning(s"No active builds for $b.\nAll jobs: " + allBuilds)
+      if (retryCount < 10 && reportedBuilds.isEmpty)
+        log.warning(s"No builds to report for $b.\nAll jobs: " + allBuilds)
 
       // on our first timeout, we try to start the build if necessary
       if (startBuildTODO) {
