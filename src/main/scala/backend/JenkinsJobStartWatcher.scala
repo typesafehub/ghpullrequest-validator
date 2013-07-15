@@ -70,7 +70,8 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         }
       }
       // we started a build already, but no modern builds found (ones we hadn't seen before we started our job)
-      else if ((currentBuilds.toSet diff prehistoricBuilds).isEmpty) {
+      // when running in no-op mode, `prehistoricBuilds` is irrelevant -- look at `reportedBuilds` instead
+      else if ((if (b.noop) reportedBuilds else (currentBuilds.toSet diff prehistoricBuilds)).isEmpty) {
         retryCount -= 1
         if (retryCount == 0) {
           log.error(s"Failed to start or find started $b")
