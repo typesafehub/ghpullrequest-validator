@@ -57,7 +57,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       // else, if we're not running in forced mode, and have been looking for a while,
       // assume the build we're looking for may have ended, and consider all builds with the expected parameters
       val reportedBuilds =
-        if (b.force || retryCount > 6) currentBuilds else allBuilds
+        if (b.force || b.noop || retryCount > 6) currentBuilds else allBuilds
 
       updateOtherActors(reportedBuilds)
 
