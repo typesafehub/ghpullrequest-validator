@@ -22,21 +22,14 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
   private def updateOtherActors(relevantBuilds: Stream[BuildStatus]) = {
     val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
 
-    val (buildingOrQueued, finished) = newlyDiscovered.partition(st => st.building || st.queued)
-
-    buildingOrQueued foreach { status =>
-      if (status.queued)
-        b.commenter ! BuildQueued
-      else {
+    // only look at most recent job (they are ordered by the jenkins in API with the most recent job at the head)
+    newlyDiscovered.headOption foreach { status =>
+      if (status.building) {
         jenkinsService ! JobStarted(b, status)
         b.commenter ! BuildStarted(status.url)
       }
-    }
-
-    // finished jobs are handled after sending BuildStarted so that (hopefully) this status is more recent
-    // NOTE: these are expected to be empty, and are definitely empty when retryCount > 6 (the first half or this actor's lifespan)
-    finished foreach { status =>
-      b.commenter ! BuildResult(status)
+      else if (status.queued) b.commenter ! BuildQueued
+      else b.commenter ! BuildResult(status)
     }
 
     seenBuilds ++= newlyDiscovered.map(_.url)
