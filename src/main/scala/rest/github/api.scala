@@ -397,7 +397,7 @@ object CommitStatus {
     otherJobsNotDoneOk.headOption orElse {
       // find earlier commit that has an unfinished/unsuccessful job
       priorCommits.toStream.flatMap(c =>
-        notDoneOk(ghapi.commitStatus(user, repo, c.sha)).headOption.map(csNotOk => jobEndedBut(jobName, statusUrl, message)(csNotOk.target_url+" for commit "+ c.sha.take(6)))
+        notDoneOk(ghapi.commitStatus(user, repo, c.sha)).headOption.map(csNotOk => jobEndedBut(jobName, statusUrl, message)(" commit "+ c.sha.take(6) +" "+ csNotOk))
       ).headOption
     }
   }
