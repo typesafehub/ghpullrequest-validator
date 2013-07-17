@@ -5,7 +5,8 @@ import scala.concurrent.duration._
 import rest.github.{API=>GithubAPI, PRCommit, CommitStatus, Pull, PullMini, Milestone}
 
 case class CheckPullRequests(username: String, project: String)
-case class CheckPullRequest(username: String, project: String, pull: PullMini, branchToMS: Map[String, rest.github.Milestone])
+case class CheckPullRequest(username: String, project: String, pull: PullMini, branchToMS: Map[String, rest.github.Milestone], poller: ActorRef)
+case class PullRequestChecked(username: String, project: String, pull: PullMini)
 case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean)
 
 
@@ -23,13 +24,14 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
   val forced = collection.mutable.HashSet[(String, JenkinsJob)]()
 
   def receive: Receive = {
-    case CheckPullRequest(user, proj, pullMini, branchToMS) =>
+    case CheckPullRequest(user, proj, pullMini, branchToMS, poller) =>
       try {
         val pull = ghapi.pullrequest(user, proj, pullMini.number)
         checkMilestone(pull, branchToMS)
         checkLGTM(pull)
         checkPullRequest(pull)
         checkSuccess(pull)
+        poller ! PullRequestChecked(user, proj, pullMini)
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
           log.error(s"Problem while checking $user/$proj#${pullMini.number}\n$x")

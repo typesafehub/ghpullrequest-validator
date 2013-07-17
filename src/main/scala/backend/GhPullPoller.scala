@@ -9,7 +9,6 @@ import rest.github.{API=>GithubAPI, PullMini}
  * a listener when they are discovered.
  */
 class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Actor with ActorLogging {
-  
   // Create the pull request checker as a nested actor so its failures
   // get reported to us.
   // TODO - better way of disassociating these two...
@@ -23,6 +22,8 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
       catch { case x: dispatch.classic.StatusCode =>
         log.error(s"Checking PRs on $user/$proj failed -- does the build bot lack admin permission?\n"+ x)
       }
+    case PullRequestChecked(user, proj, pullMini) =>
+      lastChecked(user, proj) = pullMini
   }
   
   private def initLabels(ghuser: String, ghproject: String) = {
@@ -50,21 +51,25 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
     branchToMS
   }
 
-  private[this] val lastCheckedStamp = new collection.mutable.HashMap[String, String]
+  object lastChecked {
+    def apply(user: String, proj: String, number: String) = map.getOrElse(key(user, proj, number), "")
+    def update(user: String, proj: String, pullMini: PullMini) = map(key(user, proj, pullMini.number)) = pullMini.updated_at
+
+    private val map = new collection.mutable.HashMap[String, String]
+    private def key(user: String, proj: String, num: String) = s"$user/$proj#$num"
+  }
+
   private def checkPullRequests(ghuser: String, ghproject: String): Unit = {
     val b2ms = branchToMilestone(ghuser, ghproject)
 
-    def key(num: String) = s"$ghuser/$ghproject#$num"
     def uptodate(p: PullMini): Boolean = {
-      val k = key(p.number)
-      val lastChecked = lastCheckedStamp.getOrElse(k, "")
-      if (p.updated_at == lastChecked) log.warning(s"$k should be up-to-date, still checking... (${p.updated_at} == $lastChecked)")
-      false // always check, TODO: replace by `p.updated_at == lastChecked` to only check new PRs (if this is reliable)
+      val lastCheckedAt = lastChecked(ghuser, ghproject, p.number)
+      if (p.updated_at == lastCheckedAt) log.warning(s"$ghuser/$ghproject#${p.number} should be up-to-date, still checking... (${p.updated_at} == $lastCheckedAt)")
+      false // for now, always check, TODO: replace by `p.updated_at == lastChecked` to only check new PRs (if this turns out to be reliable)
     }
 
     ghapi.pullrequests(ghuser, ghproject) filterNot uptodate foreach { pullMini =>
-      lastCheckedStamp(key(pullMini.number)) = pullMini.updated_at
-      listener ! CheckPullRequest(ghuser, ghproject, pullMini, b2ms)
+      listener ! CheckPullRequest(ghuser, ghproject, pullMini, b2ms, self)
     }
   }
 }
