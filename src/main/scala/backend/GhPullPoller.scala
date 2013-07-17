@@ -2,8 +2,7 @@ package backend
 
 import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import scala.concurrent.duration._
-import rest.github.{API=>GithubAPI}
-import util.control.Exception.catching
+import rest.github.{API=>GithubAPI, PullMini}
 
 
 /** A class that continually polls github for pull requests and notifies
@@ -51,13 +50,21 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
     branchToMS
   }
 
+  private[this] val lastCheckedStamp = new collection.mutable.HashMap[String, String]
   private def checkPullRequests(ghuser: String, ghproject: String): Unit = {
     val b2ms = branchToMilestone(ghuser, ghproject)
-    // TODO - cull pull requests that haven't changed since the last time we checked....
-    for {
-      p <- ghapi.pullrequests(ghuser, ghproject)
-      pull <- catching(classOf[Exception]) opt 
-                 ghapi.pullrequest(ghuser, ghproject, p.number.toString)
-    } listener ! CheckPullRequest(pull, b2ms)
+
+    def key(num: String) = s"$ghuser/$ghproject#$num"
+    def uptodate(p: PullMini): Boolean = {
+      val k = key(p.number)
+      val lastChecked = lastCheckedStamp.getOrElse(k, "")
+      if (p.updated_at == lastChecked) log.warning(s"$k should be up-to-date, still checking... (${p.updated_at} == $lastChecked)")
+      false // always check, TODO: replace by `p.updated_at == lastChecked` to only check new PRs (if this is reliable)
+    }
+
+    ghapi.pullrequests(ghuser, ghproject) filterNot uptodate foreach { pullMini =>
+      lastCheckedStamp(key(pullMini.number)) = pullMini.updated_at
+      listener ! CheckPullRequest(ghuser, ghproject, pullMini, b2ms)
+    }
   }
 }
