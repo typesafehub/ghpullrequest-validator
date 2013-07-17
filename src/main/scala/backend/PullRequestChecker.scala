@@ -147,14 +147,18 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       if ( (force && !forced(sha, job)) || !active(sha, job)) {
         active.+=((sha, job))
         forced.+=((sha, job))
-        val forcedUniq = if (force) "-forced" else ""
+        // TODO: find actor by name? for now not specifying a name as it's no longer unique for the longer-running commenter
+        // val forcedUniq = if (force) "-forced" else ""
+        // val name = job.name +"-commenter-"+ sha + forcedUniq
+        val commenter = context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)))
+
         jobBuilder ! BuildCommit(sha, job,
                                   Map("pullrequest" -> pull.number.toString,
                                       "sha" -> sha,
                                       "mergebranch" -> pull.base.ref),
                                   force,
                                   noop,
-                                  context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)), job.name +"-commenter-"+ sha + forcedUniq))
+                                  commenter)
       }
 
     val comments = ghapi.pullrequestcomments(user, repo, pullNum)
