@@ -27,11 +27,14 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     case CheckPullRequest(user, proj, pullMini, branchToMS, poller) =>
       try {
         val pull = ghapi.pullrequest(user, proj, pullMini.number)
-        checkMilestone(pull, branchToMS)
-        checkLGTM(pull)
-        checkPullRequest(pull)
-        checkSuccess(pull)
-        poller ! PullRequestChecked(user, proj, pullMini)
+        // TODO: make configurable whether to ignore PRs that don't have a corresponding milestone (used in scala for ignoring PRs to gh-pages)
+        if (proj != "scala" || (branchToMS isDefinedAt pull.base.ref)) {
+          checkMilestone(pull, branchToMS)
+          checkLGTM(pull)
+          checkPullRequest(pull)
+          checkSuccess(pull)
+          poller ! PullRequestChecked(user, proj, pullMini)
+        }
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
           log.error(s"Problem while checking $user/$proj#${pullMini.number}\n$x")
