@@ -11,7 +11,9 @@ case class Config(githubUser: Credentials,
 
 case class Credentials(user: String, pw: String)
 case class GithubProject(user: String, project: String)
-case class JenkinsJob(name: String)
+case class JenkinsJob(name: String) {
+  override def toString = name
+}
 object JenkinsJob {
   implicit object OrderedJenkinsJob extends Ordering[JenkinsJob] {
     def compare(x: JenkinsJob, y: JenkinsJob): Int = x.name.compare(y.name)
