@@ -2,16 +2,11 @@ package backend
 
 import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import scala.concurrent.duration._
-import rest.github.{API=>GithubAPI}
-import util.control.Exception.catching
-import rest.github.PRCommit
-import rest.github.CommitStatus
-import rest.github.Pull
-import rest.github.Milestone
-
+import rest.github.{API=>GithubAPI, PRCommit, CommitStatus, Pull, PullMini, Milestone}
 
 case class CheckPullRequests(username: String, project: String)
-case class CheckPullRequest(pull: Pull, branchToMS: Map[String, rest.github.Milestone])
+case class CheckPullRequest(username: String, project: String, pull: PullMini, branchToMS: Map[String, rest.github.Milestone], poller: ActorRef)
+case class PullRequestChecked(username: String, project: String, pull: PullMini)
 case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean)
 
 
@@ -23,22 +18,26 @@ case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean
  */
 class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuilderProps: Props) extends Actor with ActorLogging{
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
-  
+
   // cache of currently validating commits so we don't duplicate effort....
   val active = collection.mutable.HashSet[(String, JenkinsJob)]()
   val forced = collection.mutable.HashSet[(String, JenkinsJob)]()
-  
-  
+
   def receive: Receive = {
-    case CheckPullRequest(pull, branchToMS) =>
+    case CheckPullRequest(user, proj, pullMini, branchToMS, poller) =>
       try {
-        checkMilestone(pull, branchToMS)
-        checkLGTM(pull)
-        checkPullRequest(pull)
-        checkSuccess(pull)
+        val pull = ghapi.pullrequest(user, proj, pullMini.number)
+        // TODO: make configurable whether to ignore PRs that don't have a corresponding milestone (used in scala for ignoring PRs to gh-pages)
+        if (proj != "scala" || (branchToMS isDefinedAt pull.base.ref)) {
+          checkMilestone(pull, branchToMS)
+          checkLGTM(pull)
+          checkPullRequest(pull)
+          checkSuccess(pull)
+          poller ! PullRequestChecked(user, proj, pullMini)
+        }
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
-          log.error(s"Problem while checking $pull\n$x")
+          log.error(s"Problem while checking $user/$proj#${pullMini.number}\n$x")
           throw x
       }
     case CommitDone(pull, sha, job, success) =>

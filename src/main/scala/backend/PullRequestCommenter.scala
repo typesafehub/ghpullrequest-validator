@@ -2,7 +2,6 @@ package backend
 
 import akka.actor.{ActorRef, Actor, Props, ActorLogging}
 import rest.github.{API=>GithubAPI}
-import util.control.Exception.catching
 import rest.github.CommitStatus
 
 
