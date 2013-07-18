@@ -2,15 +2,13 @@ package backend
 
 import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import scala.concurrent.duration._
-import rest.github.{API=>GithubAPI}
-import util.control.Exception.catching
+import rest.github.{API=>GithubAPI, PullMini}
 
 
 /** A class that continually polls github for pull requests and notifies
  * a listener when they are discovered.
  */
 class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Actor with ActorLogging {
-  
   // Create the pull request checker as a nested actor so its failures
   // get reported to us.
   // TODO - better way of disassociating these two...
@@ -24,6 +22,8 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
       catch { case x: dispatch.classic.StatusCode =>
         log.error(s"Checking PRs on $user/$proj failed -- does the build bot lack admin permission?\n"+ x)
       }
+    case PullRequestChecked(user, proj, pullMini) =>
+      lastChecked(user, proj) = pullMini
   }
   
   private def initLabels(ghuser: String, ghproject: String) = {
@@ -51,13 +51,25 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
     branchToMS
   }
 
+  object lastChecked {
+    def apply(user: String, proj: String, number: String) = map.getOrElse(key(user, proj, number), "")
+    def update(user: String, proj: String, pullMini: PullMini) = map(key(user, proj, pullMini.number)) = pullMini.updated_at
+
+    private val map = new collection.mutable.HashMap[String, String]
+    private def key(user: String, proj: String, num: String) = s"$user/$proj#$num"
+  }
+
   private def checkPullRequests(ghuser: String, ghproject: String): Unit = {
     val b2ms = branchToMilestone(ghuser, ghproject)
-    // TODO - cull pull requests that haven't changed since the last time we checked....
-    for {
-      p <- ghapi.pullrequests(ghuser, ghproject)
-      pull <- catching(classOf[Exception]) opt 
-                 ghapi.pullrequest(ghuser, ghproject, p.number.toString)
-    } listener ! CheckPullRequest(pull, b2ms)
+
+    def uptodate(p: PullMini): Boolean = {
+      val lastCheckedAt = lastChecked(ghuser, ghproject, p.number)
+      if (p.updated_at == lastCheckedAt) log.warning(s"$ghuser/$ghproject#${p.number} should be up-to-date, still checking... (${p.updated_at} == $lastCheckedAt)")
+      false // for now, always check, TODO: replace by `p.updated_at == lastChecked` to only check new PRs (if this turns out to be reliable)
+    }
+
+    ghapi.pullrequests(ghuser, ghproject) filterNot uptodate foreach { pullMini =>
+      listener ! CheckPullRequest(ghuser, ghproject, pullMini, b2ms, self)
+    }
   }
 }
