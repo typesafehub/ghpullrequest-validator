@@ -82,7 +82,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       }
       // we found a build
       else {
-        log.info(s"$b --> ${currentBuilds.head}")
+        log.info(s"$b --> ${currentBuilds take 1}")
         context stop self
       }
   }
