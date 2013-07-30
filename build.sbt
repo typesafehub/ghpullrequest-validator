@@ -2,7 +2,7 @@ import AssemblyKeys._
 
 assemblySettings
 
-scalaVersion := "2.10.2"
+scalaVersion := "2.10.1"
 
 resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases"
 

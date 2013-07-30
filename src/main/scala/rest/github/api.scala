@@ -270,7 +270,7 @@ case class Pull(
   state: String,
   updated_at: String,
   created_at: String,
-  mergeable: Boolean,
+  mergeable: Option[Boolean],
   milestone: Option[Milestone] // when treating an issue as a pull
 ) extends Ordered[Pull] {
   def compare(other: Pull): Int = number compare other.number
