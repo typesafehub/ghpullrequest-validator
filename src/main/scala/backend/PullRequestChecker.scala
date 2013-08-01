@@ -160,7 +160,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
                                   force,
                                   noop,
                                   commenter)
-      } else log.warning(s"Not building $job for $user/$repo#${pull}@${sha.take(8)} (force: $force, noop: $noop, pending: ${pending((sha, job))}).")
+      } else log.warning(s"Not building $job for $pull@${sha.take(8)} (force: $force, noop: $noop, pending: ${pending((sha, job))}).")
 
     val comments = ghapi.pullrequestcomments(user, repo, pullNum)
 
@@ -251,8 +251,9 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         // if there's no status, or it's failure or pending (it is/was either in our local queue or started on jenkins),
         // we may end up starting a new job if it wasn't found (because the kitten was rebooted before it could move the job from our queue to jenkins)
         // note: forced jobs (PLS REBUILD) have been started above and added to pending set, so we won't start them twice
-        if (!stati.filter(_.forJob(j.name)).headOption.exists(st => st.success || st.error))
-          buildCommit(c.sha, j)
+        val jobStati = stati.filter(_.forJob(j.name))
+        if (jobStati.headOption.exists(st => st.success || st.error)) log.info(s"Status of $j for $pull@${c.sha take 4}: ${jobStati.head}")
+        else buildCommit(c.sha, j)
       }
     }
   }
