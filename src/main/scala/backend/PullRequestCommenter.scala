@@ -21,10 +21,10 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
   def addStatus(status: CommitStatus) = {
     if (!ghapi.commitStatus(user, repo, sha).take(1).contains(status)) {
-      log.info(s"Set status $status for $job of $pull.")
+      log.info(s"Set status for $job on $pull@${sha take 6}: $status.")
       Thread sleep (scala.util.Random.nextFloat * 5000).toInt // randomly sleep up to 5s to avoid setting multiple statuses with exactly the same timestamp
       ghapi.setCommitStatus(user, repo, sha, status)
-    } else log.info(s"DROPPED status $status for $job of $pull.")
+    } else log.info(s"DROPPED status for $job on $pull@${sha take 6}: $status.")
   }
 
   def receive: Receive = {
