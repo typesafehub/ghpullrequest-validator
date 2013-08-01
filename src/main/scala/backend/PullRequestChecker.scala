@@ -1,6 +1,6 @@
 package backend
 
-import akka.actor.{ActorRef,Actor, Props, ActorLogging}
+import akka.actor.{ActorRef,Actor, Props, ActorLogging, ReceiveTimeout}
 import scala.concurrent.duration._
 import rest.github.{API=>GithubAPI, PRCommit, CommitStatus, Pull, PullMini, Milestone}
 
@@ -20,10 +20,15 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
 
   // cache of currently validating commits so we don't duplicate effort....
-  val active = collection.mutable.HashSet[(String, JenkinsJob)]()
-  val forced = collection.mutable.HashSet[(String, JenkinsJob)]()
+  val pending = collection.mutable.HashSet[(String, JenkinsJob)]()
+  context setReceiveTimeout (5 minutes)
 
   def receive: Receive = {
+    // in case something went wrong, forget about supposedly pending builds every 5 minutes
+    // do still guard against starting them multiple times in close succession
+    case ReceiveTimeout =>
+      pending.clear()
+
     case CheckPullRequest(user, proj, pullMini, branchToMS, poller) =>
       try {
         val pull = ghapi.pullrequest(user, proj, pullMini.number)
@@ -45,8 +50,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         if(success) checkSuccess(pull)
         else needsAttention(pull)
 
-        active.-=((sha, job))
-        forced.-=((sha, job))
+        pending.-=((sha, job))
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
           log.error(s"Problem while marking $pull as done\n$x")
@@ -140,12 +144,10 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val pullNum = pull.number.toString
     val IGNORE_NOTE_TO_SELF = "(kitty-note-to-self: ignore "
 
-    // does not start another job when we have an active job (when !forced),
-    // forced jobs are also only started once, but tracked separately from active jobs
+    // does not start another job when we have an pending job (when !force),
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) =
-      if ( (force && !forced(sha, job)) || !active(sha, job)) {
-        active.+=((sha, job))
-        forced.+=((sha, job))
+      if (noop || !pending((sha, job))) {
+        if (!noop) pending.+=((sha, job))
         // TODO: find actor by name? for now not specifying a name as it's no longer unique for the longer-running commenter
         // val forcedUniq = if (force) "-forced" else ""
         // val name = job.name +"-commenter-"+ sha + forcedUniq
@@ -158,7 +160,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
                                   force,
                                   noop,
                                   commenter)
-      }
+      } else log.warning(s"Not building $job for $user/$repo#${pull}@${sha.take(8)} (force: $force, noop: $noop, pending: ${pending((sha, job))}).")
 
     val comments = ghapi.pullrequestcomments(user, repo, pullNum)
 
@@ -198,7 +200,10 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       ghapi.addPRComment(user, repo, pullNum,
           prefix +":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ") +" for "+ shas.map(_.take(8)).mkString(", ") +". :rotating_light:\n")
 
-      shas foreach (sha => jobs foreach (j => buildCommit(sha, j, force = true)))
+      shas foreach { sha => jobs foreach { j => 
+        pending.-=((sha, j)) // since we're forcing, ignore it was pending
+        buildCommit(sha, j, force = true)
+      }}
     }
 
     findNewCommands("BUILDLOG?") map { case (prefix, body) =>
@@ -245,7 +250,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       jenkinsJobs foreach { j =>
         // if there's no status, or it's failure or pending (it is/was either in our local queue or started on jenkins),
         // we may end up starting a new job if it wasn't found (because the kitten was rebooted before it could move the job from our queue to jenkins)
-        // note: forced jobs (PLS REBUILD) have been started above and added to active set, so we won't start them twice
+        // note: forced jobs (PLS REBUILD) have been started above and added to pending set, so we won't start them twice
         if (!stati.filter(_.forJob(j.name)).headOption.exists(st => st.success || st.error))
           buildCommit(c.sha, j)
       }
