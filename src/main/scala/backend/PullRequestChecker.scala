@@ -254,11 +254,9 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha)
       jenkinsJobs foreach { j =>
-        // if there's no status, or it's failure or pending (it is/was either in our local queue or started on jenkins),
-        // we may end up starting a new job if it wasn't found (because the kitten was rebooted before it could move the job from our queue to jenkins)
-        // note: forced jobs (PLS REBUILD) have been started above and added to pending set, so we won't start them twice
+        // if there's a status, assume there's a job(start)watcher
         val jobStati = stati.filter(_.forJob(j.name))
-        if (jobStati.headOption.exists(st => st.success || st.error)) log.info(s"Status of $j for $pull@${c.sha take 4}: ${jobStati.head}")
+        if (jobStati.nonEmpty) log.info(s"Status of $j for $pull@${c.sha take 4}: ${jobStati.head}")
         else buildCommit(c.sha, j)
       }
     }
