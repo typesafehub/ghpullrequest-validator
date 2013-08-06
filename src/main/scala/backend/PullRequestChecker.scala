@@ -144,6 +144,16 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val pullNum = pull.number.toString
     val IGNORE_NOTE_TO_SELF = "(kitty-note-to-self: ignore "
 
+    // randomly decide to synch all commits with P=1/12, so roughly every two hours (given `system startChecking 10`)
+    def randomlySynch(): Boolean = Math.random() * 13 <= 1
+    def synch(commits: List[PRCommit]): Unit = {
+      commits foreach { c =>
+        jenkinsJobs foreach { j =>
+          buildCommit(c.sha, j, noop = true)
+        }
+      }
+    }
+
     // does not start another job when we have an pending job (when !force),
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) =
       if (noop || !pending((sha, job))) {
@@ -173,9 +183,6 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         (IGNORE_NOTE_TO_SELF+ c.id +")\n", c.body)
       }
 
-    // TODO: use futures
-    val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
-
     def buildLog(commits: List[PRCommit]) = {
       val commitStati = commits map (c => (c, ghapi.commitStatus(user, repo, c.sha)))
       def shortString(job: String)(cs: CommitStatus) = cs.stateString +":"+ cs.description.getOrElse("").replace(job, "")
@@ -185,6 +192,9 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         }.mkString("\n")+"\n"
       }.mkString("\n")
     }
+
+    // TODO: use futures
+    val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
 
     findNewCommands("PLS REBUILD") foreach { case (prefix, body) =>
       val job = body.split("PLS REBUILD").last.lines.take(1).toList.headOption.getOrElse("")
@@ -210,16 +220,12 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       ghapi.addPRComment(user, repo, pullNum, prefix + buildLog(commits))
     }
 
-    findNewCommands("PLS SYNCH") map { case (prefix, body) =>
-      ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: Synchronaising! :pray:")
-      commits foreach { c =>
-        val stati = ghapi.commitStatus(user, repo, c.sha).filterNot(_.failed)
-        jenkinsJobs foreach { j =>
-          val jobStati = stati.filter(_.forJob(j.name))
-          buildCommit(c.sha, j, noop = true)
-        }
+    if (randomlySynch()) synch(commits)
+    else
+      findNewCommands("PLS SYNCH") map { case (prefix, body) =>
+        ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: Synchronaising! :pray:")
+        synch(commits)
       }
-    }
 
     // delete all commit comments -- don't delete PR comments as they would re-trigger
     // the commands that caused them originally
