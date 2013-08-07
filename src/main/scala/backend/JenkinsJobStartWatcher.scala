@@ -20,10 +20,10 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
   private val seenBuilds = collection.mutable.HashSet[String]()
   private def updateOtherActors(relevantBuilds: Stream[BuildStatus]) = {
-    val newlyDiscovered = relevantBuilds.filterNot(bs => seenBuilds(bs.url))
-
-    // only look at most recent job (they are ordered by the jenkins in API with the most recent job at the head)
-    newlyDiscovered.headOption foreach { status =>
+    // only look at most recent job not seen before
+    // (they are ordered by the jenkins in API with the most recent job at the head)
+    relevantBuilds.filterNot(bs => seenBuilds(bs.url)).headOption foreach { status =>
+      seenBuilds += status.url
       if (status.building) {
         jenkinsService ! JobStarted(b, status)
         b.commenter ! BuildStarted(status.url)
@@ -31,25 +31,22 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       else if (status.queued) b.commenter ! BuildQueued
       else b.commenter ! BuildResult(status)
     }
-
-    seenBuilds ++= newlyDiscovered.map(_.url)
   }
 
-  private val prehistoricBuilds = collection.mutable.HashSet[BuildStatus]()
   def receive: Receive = {
     case ReceiveTimeout =>
       // all build statuses for this PR, sha, mergebranch (for each arg in b.args, there must be a matching param in the job)
-      val allBuilds = api.buildStatusForJob(b.job, b.args)
+      val allBuilds: Stream[BuildStatus] = api.buildStatusForJob(b.job, b.args)
 
       // building or queued
-      val currentBuilds = allBuilds.filter(bs => bs.building || bs.queued)
+      val currentBuilds: Stream[BuildStatus] = allBuilds.filter(bs => bs.building || bs.queued)
 
       // only consider building or queued jobs if either:
       //   - we're reacting to a PLS REBUILD (b.force),
       //   - we haven't been looking that long (retryCount > 6)
       // else, if we're not running in forced mode, and have been looking for a while,
       // assume the build we're looking for may have ended, and consider all builds with the expected parameters
-      val reportedBuilds =
+      val reportedBuilds: Stream[BuildStatus] =
         if (b.force || b.noop || retryCount < 6) allBuilds else currentBuilds
 
       updateOtherActors(reportedBuilds)
@@ -64,14 +61,11 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
         // if we're running in force mode or we haven't found a running/queued build
         if (b.force || currentBuilds.isEmpty) {
           log.debug(s"Attempting $b")
-          prehistoricBuilds ++= allBuilds
 
           api.buildJob(b.job, b.args)
         }
       }
-      // we started a build already, but no modern builds found (ones we hadn't seen before we started our job)
-      // when running in no-op mode, `prehistoricBuilds` is irrelevant -- look at `reportedBuilds` instead
-      else if ((if (b.noop) reportedBuilds else (currentBuilds.toSet diff prehistoricBuilds)).isEmpty) {
+      else if (reportedBuilds.isEmpty) {
         retryCount -= 1
         if (retryCount == 0) {
           log.error(s"Failed to start or find started $b")
@@ -80,7 +74,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
           context stop self
         }
       }
-      // we found a build
+      // we reported on a build
       else {
         log.info(s"$b --> ${currentBuilds take 1}")
         context stop self

@@ -122,8 +122,6 @@ case class Actions(parameters: List[Param]) {
 case class BuildStatus(number: String,
   result: String,
   building: Boolean,
-  id: String,
-  timestamp: String,
   duration: String,
   actions: Actions,
   url: String) {
@@ -137,13 +135,13 @@ case class BuildStatus(number: String,
 
   def queued = false
   def isSuccess = !building && result == "SUCCESS"
-  override def toString = s"Build $number: $result $friendlyDuration ($url)."
+  override def toString = s"Build $number: ${if (building) "BUILDING" else result} $friendlyDuration ($url)."
 }
 
 case class Queue(items: List[QueueItem])
 case class QueueItem(actions: Actions, task: Task, id: String) {
   def jobName = task.name
   // the url is fake but needs to be unique
-  def toStatus = new BuildStatus("0", "Queued build for " + task.name + " id: " + id, false, "0", "0", "0", actions, task.url + "/queued/" + id) { override def queued = true }
+  def toStatus = new BuildStatus("0", "Queued build for " + task.name + " id: " + id, false, "-1", actions, task.url + "/queued/" + id) { override def queued = true }
 }
 case class Task(name: String, url: String)
