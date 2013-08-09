@@ -144,8 +144,11 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val pullNum = pull.number.toString
     val IGNORE_NOTE_TO_SELF = "(kitty-note-to-self: ignore "
 
-    // randomly decide to synch all commits with P=1/12, so roughly every two hours (given `system startChecking 10`)
-    def randomlySynch(): Boolean = Math.random() * 13 <= 1
+    // synch when run during the first 10 minutes of every other hour
+    def randomlySynch(): Boolean = {
+      val now = new java.util.Date
+      (now.getHours % 2 == 0) && (now.getMinutes <= 10)
+    }
     def synch(commits: List[PRCommit]): Unit = {
       commits foreach { c =>
         jenkinsJobs foreach { j =>
