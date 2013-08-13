@@ -20,14 +20,16 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
 
   // cache of currently validating commits so we don't duplicate effort....
-  val pending = collection.mutable.HashSet[(String, JenkinsJob)]()
   context setReceiveTimeout (5 minutes)
+  val active = collection.mutable.HashSet[(String, JenkinsJob)]()
+  val forced = collection.mutable.HashSet[(String, JenkinsJob)]()
 
   def receive: Receive = {
     // in case something went wrong, forget about supposedly pending builds every 5 minutes
     // do still guard against starting them multiple times in close succession
     case ReceiveTimeout =>
-      pending.clear()
+      active.clear()
+      forced.clear()
 
     case CheckPullRequest(user, proj, pullMini, branchToMS, poller) =>
       try {
@@ -50,7 +52,8 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
         if(success) checkSuccess(pull)
         else needsAttention(pull)
 
-        pending.-=((sha, job))
+        active.-=((sha, job))
+        forced.-=((sha, job))
       } catch {
         case x@(_ : dispatch.classic.StatusCode | _ : java.net.SocketTimeoutException) =>
           log.error(s"Problem while marking $pull as done\n$x")
@@ -159,8 +162,11 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
     // does not start another job when we have an pending job (when !force),
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) =
-      if (noop || !pending((sha, job))) {
-        if (!noop) pending.+=((sha, job))
+      if ( noop || (force && !forced(sha, job)) || !active(sha, job)) {
+        if (!noop) {
+          active.+=((sha, job))
+          if (force) forced.+=((sha, job))
+        }
         // TODO: find actor by name? for now not specifying a name as it's no longer unique for the longer-running commenter
         // val forcedUniq = if (force) "-forced" else ""
         // val name = job.name +"-commenter-"+ sha + forcedUniq
@@ -173,7 +179,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
                                   force,
                                   noop,
                                   commenter)
-      } else log.warning(s"Not building $job for $pull@${sha.take(8)} (force: $force, noop: $noop, pending: ${pending((sha, job))}).")
+      } else log.warning(s"Not building $job for $pull@${sha.take(8)} (force: $force, noop: $noop, active: ${active((sha, job))}, forced: ${forced((sha, job))}).")
 
     val comments = ghapi.pullrequestcomments(user, repo, pullNum)
 
@@ -213,10 +219,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       ghapi.addPRComment(user, repo, pullNum,
           prefix +":cat: Roger! Rebuilding "+ jobs.map(_.name).mkString(", ") +" for "+ shas.map(_.take(8)).mkString(", ") +". :rotating_light:\n")
 
-      shas foreach { sha => jobs foreach { j => 
-        pending.-=((sha, j)) // since we're forcing, ignore it was pending
-        buildCommit(sha, j, force = true)
-      }}
+      shas foreach (sha => jobs foreach (j => buildCommit(sha, j, force = true)))
     }
 
     findNewCommands("BUILDLOG?") map { case (prefix, body) =>
