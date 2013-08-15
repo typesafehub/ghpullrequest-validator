@@ -253,9 +253,10 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha)
       jenkinsJobs foreach { j =>
-        // if there's a status, assume there's a job(start)watcher
         val jobStati = stati.filter(_.forJob(j.name))
-        if (jobStati.isEmpty) buildCommit(c.sha, j)
+        // build if there's no status,
+        // if the status is "pending", also check the build (maybe we got restarted and thus there is no job start watcher)
+        if (jobStati.isEmpty || jobStati.head.pending) buildCommit(c.sha, j)
         // else log.info(s"Status of $j for $pull@${c.sha take 4}: ${jobStati.head}")
       }
     }
