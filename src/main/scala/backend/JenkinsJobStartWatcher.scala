@@ -51,8 +51,8 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
 
       updateOtherActors(reportedBuilds)
 
-      if (retryCount < 10 && reportedBuilds.isEmpty)
-        log.warning(s"No builds to report for $b.\nAll jobs: " + allBuilds)
+      // if (retryCount < 10 && reportedBuilds.isEmpty)
+      //   log.warning(s"No builds to report for $b.\nAll jobs: " + allBuilds)
 
       // on our first timeout, we try to start the build if necessary
       if (startBuildTODO) {
