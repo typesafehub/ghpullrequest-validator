@@ -132,12 +132,28 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
     if (success && !hasTestedLabel) {
       ghapi.addLabel(user, repo, pullNum, List("tested"))
+      cleanLitter(pull, commits)
 
       if (currLabelNames.contains("needs-attention"))
         ghapi.deleteLabel(user, repo, pullNum, "needs-attention")
     }
     else if (!success && hasTestedLabel)
       ghapi.deleteLabel(user, repo, pullNum, "tested")
+  }
+
+  def cleanLitter(pull: Pull, commits: List[PRCommit]): Unit = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+
+    commits foreach { c =>
+      ghapi.commitComments(user, repo, c.sha) foreach { comm =>
+        if (comm.user.login == ghapi.userName) {
+          log.debug("Deleting commit comment "+ comm.id)
+          ghapi.deleteCommitComment(user, repo, comm.id)
+        }
+        else log.debug("Leaving commit comment "+ (comm.id, comm.user.login))
+      }
+    }
   }
 
   // TODO - Ordering.
@@ -229,23 +245,8 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     // delete all commit comments -- don't delete PR comments as they would re-trigger
     // the commands that caused them originally
     findNewCommands("NOLITTER!") map { case (prefix, body) =>
-//      comments foreach { comm =>
-//        if (comm.user.login == user && !comm.body.startsWith(IGNORE_NOTE_TO_SELF)) {
-//          log.debug("Deleting PR comment "+ comm.id)
-//          ghapi.deletePRComment(user, repo, comm.id)
-//        }
-//        else log.debug("Leaving PR comment "+ (comm.id, comm.user.login))
-//      }
       ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: cleaning up... sorry! :cat:")
-      commits foreach { c =>
-        ghapi.commitComments(user, repo, c.sha) foreach { comm =>
-          if (comm.user.login == ghapi.userName) {
-            log.debug("Deleting commit comment "+ comm.id)
-            ghapi.deleteCommitComment(user, repo, comm.id)
-          }
-          else log.debug("Leaving commit comment "+ (comm.id, comm.user.login))
-        }
-      }
+      cleanLitter(pull, commits)
     }
 
     log.info(s"Checking $pull (${commits.length} commits).")
