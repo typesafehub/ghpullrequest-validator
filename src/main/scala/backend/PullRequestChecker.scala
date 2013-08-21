@@ -20,12 +20,12 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
 
   // cache of currently validating commits so we don't duplicate effort....
-  context setReceiveTimeout (5 minutes)
+  context setReceiveTimeout (15 minutes)
   val active = collection.mutable.HashSet[(String, JenkinsJob)]()
   val forced = collection.mutable.HashSet[(String, JenkinsJob)]()
 
   def receive: Receive = {
-    // in case something went wrong, forget about supposedly pending builds every 5 minutes
+    // in case something went wrong, forget about supposedly pending builds every 15 minutes
     // do still guard against starting them multiple times in close succession
     case ReceiveTimeout =>
       active.clear()
@@ -132,12 +132,28 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
     if (success && !hasTestedLabel) {
       ghapi.addLabel(user, repo, pullNum, List("tested"))
+      cleanLitter(pull, commits)
 
       if (currLabelNames.contains("needs-attention"))
         ghapi.deleteLabel(user, repo, pullNum, "needs-attention")
     }
     else if (!success && hasTestedLabel)
       ghapi.deleteLabel(user, repo, pullNum, "tested")
+  }
+
+  def cleanLitter(pull: Pull, commits: List[PRCommit]): Unit = {
+    val user = pull.base.repo.owner.login
+    val repo = pull.base.repo.name
+
+    commits foreach { c =>
+      ghapi.commitComments(user, repo, c.sha) foreach { comm =>
+        if (comm.user.login == ghapi.userName) {
+          log.debug("Deleting commit comment "+ comm.id)
+          ghapi.deleteCommitComment(user, repo, comm.id)
+        }
+        else log.debug("Leaving commit comment "+ (comm.id, comm.user.login))
+      }
+    }
   }
 
   // TODO - Ordering.
@@ -147,11 +163,6 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val pullNum = pull.number.toString
     val IGNORE_NOTE_TO_SELF = "(kitty-note-to-self: ignore "
 
-    // synch when run during the first 10 minutes of every other hour
-    def randomlySynch(): Boolean = {
-      val now = new java.util.Date
-      (now.getHours % 2 == 0) && (now.getMinutes <= 10)
-    }
     def synch(commits: List[PRCommit]): Unit = {
       commits foreach { c =>
         jenkinsJobs foreach { j =>
@@ -162,10 +173,10 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
 
     // does not start another job when we have an pending job (when !force),
     def buildCommit(sha: String, job: JenkinsJob, force: Boolean = false, noop: Boolean = false) =
-      if ( noop || (force && !forced(sha, job)) || !active(sha, job)) {
+      if (noop || (if (force) !forced(sha, job) else !active(sha, job))) {
         if (!noop) {
-          active.+=((sha, job))
           if (force) forced.+=((sha, job))
+          else       active.+=((sha, job))
         }
         // TODO: find actor by name? for now not specifying a name as it's no longer unique for the longer-running commenter
         // val forcedUniq = if (force) "-forced" else ""
@@ -226,33 +237,16 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       ghapi.addPRComment(user, repo, pullNum, prefix + buildLog(commits))
     }
 
-    if (randomlySynch()) synch(commits)
-    else
-      findNewCommands("PLS SYNCH") map { case (prefix, body) =>
-        ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: Synchronaising! :pray:")
-        synch(commits)
-      }
+    findNewCommands("PLS SYNCH") map { case (prefix, body) =>
+      ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: Synchronaising! :pray:")
+      synch(commits)
+    }
 
     // delete all commit comments -- don't delete PR comments as they would re-trigger
     // the commands that caused them originally
     findNewCommands("NOLITTER!") map { case (prefix, body) =>
-//      comments foreach { comm =>
-//        if (comm.user.login == user && !comm.body.startsWith(IGNORE_NOTE_TO_SELF)) {
-//          log.debug("Deleting PR comment "+ comm.id)
-//          ghapi.deletePRComment(user, repo, comm.id)
-//        }
-//        else log.debug("Leaving PR comment "+ (comm.id, comm.user.login))
-//      }
       ghapi.addPRComment(user, repo, pullNum, prefix + ":cat: cleaning up... sorry! :cat:")
-      commits foreach { c =>
-        ghapi.commitComments(user, repo, c.sha) foreach { comm =>
-          if (comm.user.login == ghapi.userName) {
-            log.debug("Deleting commit comment "+ comm.id)
-            ghapi.deleteCommitComment(user, repo, comm.id)
-          }
-          else log.debug("Leaving commit comment "+ (comm.id, comm.user.login))
-        }
-      }
+      cleanLitter(pull, commits)
     }
 
     log.info(s"Checking $pull (${commits.length} commits).")
@@ -260,10 +254,11 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha)
       jenkinsJobs foreach { j =>
-        // if there's a status, assume there's a job(start)watcher
         val jobStati = stati.filter(_.forJob(j.name))
-        if (jobStati.nonEmpty) log.info(s"Status of $j for $pull@${c.sha take 4}: ${jobStati.head}")
-        else buildCommit(c.sha, j)
+        // build if there's no status,
+        // if the status is "pending", also check the build (maybe we got restarted and thus there is no job start watcher)
+        if (jobStati.isEmpty || jobStati.head.pending) buildCommit(c.sha, j)
+        // else log.info(s"Status of $j for $pull@${c.sha take 4}: ${jobStati.head}")
       }
     }
   }

@@ -8,7 +8,7 @@ import rest.jenkins.BuildStatus
 case class BuildCommit(sha: String, job: JenkinsJob, args: Map[String,String], force: Boolean, noop: Boolean, commenter: ActorRef) {
   assert(!(force && noop), "Force and noop cannot both be true.")
 
-  override def toString = s"$actionString ${job.name} for #${args("pullrequest")} @${args("sha").take(6)}"
+  override def toString = s"$actionString ${job.name} for #${args("pullrequest")}@${args("sha").take(6)}"
   def actionString = if (force) "Rebuild" else if (noop) "Synch" else "Build"
 }
 case class BuildStarted(url: String)
