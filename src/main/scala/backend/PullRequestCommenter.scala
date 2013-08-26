@@ -36,7 +36,7 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
 
     case BuildResult(status) =>
       def cleanPartestLine(line: String) = ("  - " + {
-        try { line.split("/files/")(1).split("\\[FAILED\\]").head.trim }
+        try line.split("-")(1).trim
         catch {
           case _: Exception => line
         }})
@@ -48,17 +48,22 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             val consoleOutput = rest.Http(dispatch.classic.url(status.url) / "consoleText" >- identity[String])
             val (logLines, failureLog) = consoleOutput.lines.span(! _.startsWith("BUILD FAILED"))
 
+            // failed tests/compiler errors -- TODO: improve detection
             val failedTests =
               if (logLines.exists(_.contains("test.suite"))) {
-                logLines.filter(_.contains("[FAILED]")).map(cleanPartestLine).toList
+                logLines.filter(line =>
+                  line.contains("!!") ||
+                  line.toLowerCase.contains("failed") ||
+                  line.toLowerCase.contains("error")).map(cleanPartestLine).toList
               } else Nil
 
-            val jobDesc = "Job "+ job.name +" failed for "+ sha.take(8)
+            val jobDesc  = s"Job ${job.name} failed for ${sha.take(8)}"
+            val testsMsg = if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n"
 
-            val message = jobDesc +" [(results)]("+ status.url +"):\n"+
-              (if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n") +
-              "<br>"+ status.friendlyDuration +
-              """<br> to rebuild, comment "PLS REBUILD/"""+ job.name + "@"+ sha+ """" on PR """+ pull.number // not referencing the PR github-style as that causes lots of noise
+            // not referencing the PR github-style as that causes lots of noise
+            val message = s"$jobDesc ${status.friendlyDuration} [(results)](${status.url}):<br>$testsMsg<br>"+
+              s"""To retry exactly this commit (if the failure was spurious), comment "PLS REBUILD/${job.name}@$sha" on PR ${pull.number}."""+
+              "NOTE: new commits are rebuilt automatically as they appear. There's no need to force a rebuild if you're updating the PR."
 
             log.debug("Failed: "+ message)
 
