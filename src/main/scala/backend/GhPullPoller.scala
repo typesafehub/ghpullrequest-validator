@@ -4,6 +4,10 @@ import akka.actor.{ActorRef,Actor, Props, ActorLogging}
 import scala.concurrent.duration._
 import rest.github.{API=>GithubAPI, PullMini}
 
+object GhPullPoller {
+  def props(ghapi: GithubAPI, pullRequestCheckerProps: Props): Props =
+    Props(classOf[GhPullPoller],ghapi, pullRequestCheckerProps)
+}
 
 /** A class that continually polls github for pull requests and notifies
  * a listener when they are discovered.
@@ -13,7 +17,7 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
   // get reported to us.
   // TODO - better way of disassociating these two...
   // Perhaps an actor that just grabs pull requests and sends messages for them...
-  val listener = context actorOf pullRequestCheckerProps
+  val listener = context.actorOf(pullRequestCheckerProps, "pull-request-checker")
   
   def receive: Receive = {
     case CheckPullRequests(user, proj) =>

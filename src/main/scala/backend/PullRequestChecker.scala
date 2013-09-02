@@ -9,6 +9,10 @@ case class CheckPullRequest(username: String, project: String, pull: PullMini, b
 case class PullRequestChecked(username: String, project: String, pull: PullMini)
 case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean)
 
+object PullRequestChecker {
+  def props(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuilderProps: Props): Props =
+    Props(classOf[PullRequestChecker], ghapi, jenkinsJobs, jobBuilderProps)
+}
 
 /** This actor is responsible for validating that a pull request has had all required tests executed
  * and that they have passed.
@@ -17,6 +21,8 @@ case class CommitDone(pull: Pull, sha: String, job: JenkinsJob, success: Boolean
  * "pullrequest"
  */
 class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuilderProps: Props) extends Actor with ActorLogging{
+  var counter = 0;
+
   val jobBuilder = context.actorOf(jobBuilderProps, "job-builder")
 
   // cache of currently validating commits so we don't duplicate effort....
@@ -179,9 +185,9 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
           else       active.+=((sha, job))
         }
         // TODO: find actor by name? for now not specifying a name as it's no longer unique for the longer-running commenter
-        // val forcedUniq = if (force) "-forced" else ""
-        // val name = job.name +"-commenter-"+ sha + forcedUniq
-        val commenter = context.actorOf(Props(new PullRequestCommenter(ghapi, pull, job, sha, self)))
+        // val forcedUniq =
+        val name = s"${job.name}-commenter-$sha-${counter += 1; counter}${if (force) "-forced" else ""}"
+        val commenter = context.actorOf(PullRequestCommenter.props(ghapi, pull, job, sha, self), name)
 
         jobBuilder ! BuildCommit(sha, job,
                                   Map("pullrequest" -> pull.number.toString,
