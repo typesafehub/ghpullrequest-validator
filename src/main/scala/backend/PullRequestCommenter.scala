@@ -4,6 +4,10 @@ import akka.actor.{ActorRef, Actor, Props, ActorLogging}
 import rest.github.{API=>GithubAPI}
 import rest.github.CommitStatus
 
+object PullRequestCommenter {
+  def props(ghapi: GithubAPI, pull: rest.github.Pull, job: JenkinsJob, shaMaybeShort: String, notify: ActorRef): Props =
+    Props(classOf[PullRequestCommenter], ghapi, pull, job, shaMaybeShort, notify)
+}
 
 /** Comments on pull request `pull` with the result of the jenkins job `job` that's building commit `sha`.
  *

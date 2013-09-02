@@ -4,6 +4,11 @@ import akka.actor.{ Actor, ActorLogging, ActorRef, ActorSystem, Props, ReceiveTi
 import rest.jenkins.{ API => JenkinsAPI }
 import scala.concurrent.duration._
 
+object JenkinsJobWatcher {
+  def props(api: JenkinsAPI, build: BuildCommit, buildnumber: String): Props =
+    Props(classOf[JenkinsJobWatcher], api, build, buildnumber)
+}
+
 /** An actor that watches a specific job and returns its status when the job is completed. */
 class JenkinsJobWatcher(api: JenkinsAPI, build: BuildCommit, buildnumber: String) extends Actor with ActorLogging {
   log.info(s"Waiting for end of $build [$buildnumber].")

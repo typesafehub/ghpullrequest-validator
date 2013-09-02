@@ -29,8 +29,8 @@ trait BackendStore {
   def startChecking(periodMinutes: Int): Unit
 }
 object BackendStore {
-  def apply(system: ActorSystem): BackendStore = new BackendStore {
-    lazy val backendStore = system.actorOf(Props(new BackendStoreActor))
+  def apply(system: ActorSystem, name: String): BackendStore = new BackendStore {
+    lazy val backendStore = system.actorOf(Props[BackendStoreActor], name)
     
     def addConfig(config: Config): Future[Seq[Config]] = 
       ask(backendStore, config)(1 minutes).mapTo[Seq[Config]]
@@ -84,7 +84,7 @@ class BackendStoreActor extends Actor {
     backends getOrElse(hashConfig(c), {
       val japi = rest.jenkins.API(c.jenkinsUrl, Some(c.jenkinsUser.user -> c.jenkinsUser.pw))
       val ghapi = rest.github.API.fromUser(c.githubUser.user, c.githubUser.pw)
-      val backend = Backend(ghapi, japi, c.jenkinsJobs, context)
+      val backend = Backend(ghapi, japi, c.jenkinsJobs, context, s"${c.project.user}+${c.project.project}")
       backends += (hashConfig(c) -> backend)
       backend
     })
