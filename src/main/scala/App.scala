@@ -12,7 +12,7 @@ import com.typesafe.config.{
 
 object GhApp extends scala.App {
   val actors =  ActorSystem()
-  val system = BackendStore(actors)
+  val system = BackendStore(actors, "ghpr-2")
   val log = Logging.getLogger(actors, this)
   
   if(configs.isEmpty) {

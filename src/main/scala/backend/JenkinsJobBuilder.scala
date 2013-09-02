@@ -17,20 +17,28 @@ case object BuildQueued
 
 // Internal messages
 case class JobStarted(b: BuildCommit, status: BuildStatus)
-  
+
+object JenkinsJobBuilder {
+  def props(api: JenkinsAPI): Props = Props(classOf[JenkinsJobBuilder], api)
+}
+
 /** An actor that can build jenkins jobs. */
 class JenkinsJobBuilder(val api: JenkinsAPI)  extends Actor with ActorLogging {
+  var jswCounter = 0
+  var jwCounter = 0
   // Pretty simple implementation, just spawn someone else up to start a job.
   // TODO - Detect failure and handle them....
   def receive: Receive = {
     case build: BuildCommit =>
       val me = self
       log.info(s"Watching for $build.")
-      context actorOf Props(new JenkinsJobStartWatcher(api, build, me))
+      context.actorOf(JenkinsJobStartWatcher.props(api, build, me), s"job-start-watcher-${build.job.name}@${build.sha}-${jswCounter += 1; jswCounter}")
 
     case JobStarted(build, status) =>
       log.info(s"Started: $build --> $status")
       context.actorOf(
-          Props(new JenkinsJobWatcher(api, build, status.number))) // , build.job.name + "-" + status.number <-- not unique, not needed?
+        JenkinsJobWatcher.props(api, build, status.number), // , build.job.name + "-" + status.number <-- not unique, not needed?
+        s"job-watcher-${build.job.name}@${build.sha}-${jwCounter += 1; jwCounter}"
+    )
   }
 }

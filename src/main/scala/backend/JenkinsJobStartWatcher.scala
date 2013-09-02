@@ -5,6 +5,11 @@ import rest.jenkins.{ API => JenkinsAPI }
 import scala.concurrent.duration._
 import rest.jenkins.BuildStatus
 
+object JenkinsJobStartWatcher {
+  def props(api: JenkinsAPI, b: BuildCommit, jenkinsService: ActorRef): Props =
+    Props(classOf[JenkinsJobStartWatcher], api, b, jenkinsService)
+}
+
 /** A class that watches for a job to begin on jenkins and then
  *  notifies the jenkinsService that the job has started.
  */
