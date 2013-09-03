@@ -5,10 +5,17 @@ import dispatch.classic.{ Http => _, _ }
 import net.liftweb.json.{ DefaultFormats, Formats }
 import net.liftweb.json.JsonParser._
 import backend.JenkinsJob
+import scala.util.control.Exception.Catcher
 
 /** An API class to connect to jenkins and do stuff.
  */
 class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
+
+  final private def handleCommonFailures[T](thunk: (Throwable) ⇒ T): Catcher[T] = {
+    case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException |
+        _: java.net.SocketTimeoutException) =>
+      thunk(e)
+  }
 
   protected def makeReq(uri: String) = {
     val req = url("%s/%s" format (jenkinsUrl, uri))
@@ -32,8 +39,7 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
     try {
       val loc = makeReq("job/%s/%s/api/json" format (job.name, buildNumber))
       Some(Http(loc >- parseJsonTo[BuildStatus]))
-    } catch {
-      case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
+    } catch handleCommonFailures { e =>
         println(s"Error: could not get status for $job/$buildNumber: "+ e)
         None
     }
@@ -50,8 +56,7 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
     val queuedStati =
       try {
         Http(makeReq("queue/api/json") >- parseJsonTo[Queue]).items.filter(_.jobName == job.name).map(_.toStatus)
-      } catch {
-        case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
+      } catch handleCommonFailures { e =>
           println(s"Error: could not get queued jobs for $job: "+ e)
           Nil
       }
@@ -87,12 +92,10 @@ class API(jenkinsUrl: String, auth: Option[(String, String)] = None) {
 
       paramsForExpectedArgs == expectedArgs
     }
-  } catch {
-    case e@(_: dispatch.classic.StatusCode | _: net.liftweb.json.MappingException) =>
+  } catch handleCommonFailures { e =>
       println(s"Error: could not get buildStatusForJob for $job: "+ e)
       Stream.empty[BuildStatus]
   }
-
 }
 
 object API {
