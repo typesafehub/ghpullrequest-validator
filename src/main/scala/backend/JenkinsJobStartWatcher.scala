@@ -47,12 +47,13 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       val currentBuilds: Stream[BuildStatus] = allBuilds.filter(bs => bs.building || bs.queued)
 
       // only consider building or queued jobs if either:
+      //   - we're _not_ reacting to a PLS SYNCH (b.noop)
       //   - we're reacting to a PLS REBUILD (b.force),
       //   - we haven't been looking that long (retryCount > 6)
-      // else, if we're not running in forced mode, and have been looking for a while,
-      // assume the build we're looking for may have ended, and consider all builds with the expected parameters
+      // else assume that the build we're looking for may have ended,
+      // and consider all builds with the expected parameters
       val reportedBuilds: Stream[BuildStatus] =
-        if (b.force || b.noop || retryCount < 6) allBuilds else currentBuilds
+        if (!b.noop && (b.force || retryCount > 6)) currentBuilds else allBuilds
 
       updateOtherActors(reportedBuilds)
 
@@ -81,7 +82,7 @@ class JenkinsJobStartWatcher(api: JenkinsAPI, b: BuildCommit, jenkinsService: Ac
       }
       // we reported on a build
       else {
-        log.info(s"$b --> ${currentBuilds take 1}")
+        log.info(s"$b --> ${reportedBuilds take 1}")
         context stop self
       }
   }
