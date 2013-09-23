@@ -109,7 +109,7 @@ class API(val token: String, val userName: String) {
   // most recent status comes first in the resulting list!
   def commitStatus(user: String, repo: String, commitsha: String): List[CommitStatus] = {
     val url    = makeAPIurl("/repos/%s/%s/statuses/%s" format (user, repo, commitsha))
-    val action = url >- parseJsonTo[List[CommitStatus]]
+    val action = url >- (json => parseJsonTo[List[CommitStatus]](json).sortBy(_.updated_at).reverse)
     Http(action)
   }
 
@@ -327,13 +327,14 @@ case class CommitStatus(
   // User defined
   state: String,
   target_url: Option[String]=None,
-  description: Option[String]=None) {
-//  // Github Added
-//  id: Option[String] = None,
-//  created_at: Option[String]=None,
-//  updated_at: Option[String]=None,
-//  url: Option[String]=None,
-//  creator: Option[User]=None) {
+  description: Option[String]=None,
+  updated_at: Option[String]=None
+  //  // Github Added
+  //  id: Option[String] = None,
+  //  created_at: Option[String]=None,
+  //  url: Option[String]=None,
+  //  creator: Option[User]=None
+  ) {
   def toJson = makeJson(this)
 
   import CommitStatus._
