@@ -69,7 +69,7 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
     def uptodate(p: PullMini): Boolean = {
       val lastCheckedAt = lastChecked(ghuser, ghproject, p.number)
       if (p.updated_at != lastCheckedAt) log.info(s"Detected $ghuser/$ghproject#${p.number} is out of date.")
-      false // for now, always check, TODO: replace by `p.updated_at == lastChecked` to only check new PRs (if this turns out to be reliable)
+      p.updated_at == lastChecked
     }
 
     ghapi.pullrequests(ghuser, ghproject) filterNot uptodate foreach { pullMini =>
