@@ -65,9 +65,9 @@ class PullRequestCommenter(ghapi: GithubAPI, pull: rest.github.Pull, job: Jenkin
             val testsMsg = if (failedTests.nonEmpty) failedTests.mkString("Failed tests:\n", "\n", "\n") else "\n"
 
             // not referencing the PR github-style as that causes lots of noise
-            val message = s"$jobDesc ${status.friendlyDuration} [(results)](${status.url}):<br>$testsMsg<br>"+
-              s"""To retry exactly this commit (if the failure was spurious), comment "PLS REBUILD/${job.name}@$sha" on PR ${pull.number}."""+
-              "NOTE: new commits are rebuilt automatically as they appear. There's no need to force a rebuild if you're updating the PR."
+            val message = s"$jobDesc ${status.friendlyDuration} (ping @${pull.user.login}) [(results)](${status.url}):<br>$testsMsg<br>"+
+              s"""To retry exactly this commit, comment "PLS REBUILD/${job.name}@$sha" on PR ${pull.number}.<br>"""+
+              "NOTE: New commits are rebuilt automatically as they appear. A forced rebuild is only necessary for transient failures."
 
             log.debug("Failed: "+ message)
 
