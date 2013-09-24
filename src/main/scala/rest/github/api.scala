@@ -375,6 +375,7 @@ object CommitStatus {
   final val FAKE_PENDING = "OK"
 
   // TODO: assert(!name.contains(" ")) for all job* methods below
+  // TODO: factor out the pattern
   def jobQueued(name: String) = CommitStatus(PENDING, None, Some(name +" queued."))
   def jobStarted(name: String, url: String) = CommitStatus(PENDING, Some(url), Some(name +" started."))
   // assert(!message.startsWith(FAKE_PENDING))
