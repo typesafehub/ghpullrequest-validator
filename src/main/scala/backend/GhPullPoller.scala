@@ -39,7 +39,7 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
       val availableLabels = ghapi.allLabels(ghuser, ghproject).toSet
       (requiredLabels -- availableLabels) foreach { l =>
         val created = ghapi.createLabel(ghuser, ghproject, l)
-        log.debug("initLabels -- created $l as $created")
+        log.debug(s"initLabels -- created $l as $created")
       }
     } catch {
       case x: net.liftweb.json.MappingException =>
