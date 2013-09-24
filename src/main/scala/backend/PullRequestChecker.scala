@@ -196,7 +196,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
                                   force,
                                   noop,
                                   commenter)
-      } else log.warning(s"Not building $job for $pull@${sha.take(8)} (force: $force, noop: $noop, active: ${active((sha, job))}, forced: ${forced((sha, job))}).")
+      } else log.debug(s"Not building $job for $pull@${sha.take(8)} (force: $force, noop: $noop, active: ${active((sha, job))}, forced: ${forced((sha, job))}).")
 
     val comments = ghapi.pullrequestcomments(user, repo, pullNum)
 
@@ -255,7 +255,7 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
       cleanLitter(pull, commits)
     }
 
-    log.info(s"Checking $pull (${commits.length} commits).")
+    log.debug(s"Checking $pull (${commits.length} commits).")
 
     commits foreach { c =>
       val stati = ghapi.commitStatus(user, repo, c.sha)
