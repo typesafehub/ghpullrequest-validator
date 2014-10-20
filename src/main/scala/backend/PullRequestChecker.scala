@@ -223,7 +223,12 @@ class PullRequestChecker(ghapi: GithubAPI, jenkinsJobs: Set[JenkinsJob], jobBuil
     val commits = ghapi.pullrequestcommits(user, repo, pull.number.toString)
 
     findNewCommands("PLS REBUILD") foreach { case (prefix, body) =>
-      val job = body.split("PLS REBUILD").last.lines.take(1).toList.headOption.getOrElse("")
+      val job = (
+        (for (
+          jobNameLines <- body.split("PLS REBUILD").lastOption;
+          jobName <- jobNameLines.lines.take(1).toList.headOption)
+          yield jobName) getOrElse ""
+        )
       val trimmed = job.trim
       val (jobs, shas) =
         if (trimmed.startsWith("ALL")) (jenkinsJobs, commits.map(_.sha))
