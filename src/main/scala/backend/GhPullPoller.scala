@@ -73,7 +73,8 @@ class GhPullPoller(ghapi: GithubAPI, pullRequestCheckerProps: Props) extends Act
     }
 
     ghapi.pullrequests(ghuser, ghproject) filterNot uptodate foreach { pullMini =>
-      listener ! CheckPullRequest(ghuser, ghproject, pullMini, b2ms, self)
+      if (pullMini.number.toInt > 4266) log.warning("Ignoring PR that will be handled by scabot")
+      else listener ! CheckPullRequest(ghuser, ghproject, pullMini, b2ms, self)
     }
   }
 }
